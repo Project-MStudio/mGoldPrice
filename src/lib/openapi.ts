@@ -83,6 +83,7 @@ export const openapiSpec = {
       },
       CronResponse: {
         type: "object",
+        description: "Kết quả cào 1 store (khi gọi có ?store=).",
         properties: {
           store_id: { type: "string", example: "kimphat" },
           changed: { type: "boolean", example: true },
@@ -90,6 +91,29 @@ export const openapiSpec = {
           data: { $ref: "#/components/schemas/GoldData" },
         },
         required: ["store_id", "changed", "action", "data"],
+      },
+      CronBatchResponse: {
+        type: "object",
+        description: "Kết quả cào TẤT CẢ store (khi gọi không có ?store=). Mỗi phần tử là kết quả 1 store, hoặc { store_id, error } / { store_id, skipped } nếu lỗi/chưa đăng ký fetcher.",
+        properties: {
+          count: { type: "integer", example: 2 },
+          results: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                store_id: { type: "string", example: "kimphat" },
+                changed: { type: "boolean" },
+                action: { type: "string", enum: ["insert", "update"] },
+                data: { $ref: "#/components/schemas/GoldData" },
+                error: { type: "string" },
+                skipped: { type: "string" },
+              },
+              required: ["store_id"],
+            },
+          },
+        },
+        required: ["count", "results"],
       },
       Store: {
         type: "object",
@@ -170,13 +194,22 @@ export const openapiSpec = {
         tags: ["cron"],
         summary: "Cào + lưu DB",
         description:
-          "Cào trang nguồn của store → parse → encode. Khác lần trước → INSERT; giống → UPDATE row mới nhất (refresh updated_at). Cần CRON_SECRET.",
+          "Không có `?store=` → cào TẤT CẢ store trong bảng store (dùng cho 1 cron định kỳ duy nhất). Có `?store=` → cào đúng store đó. Khác lần trước → INSERT; giống → UPDATE row mới nhất. Cần CRON_SECRET.",
         security: [{ cronSecret: [] }],
         parameters: [{ $ref: "#/components/parameters/StoreParam" }],
         responses: {
           "200": {
-            description: "OK",
-            content: { "application/json": { schema: { $ref: "#/components/schemas/CronResponse" } } },
+            description: "OK — batch (không có ?store=) hoặc single (có ?store=)",
+            content: {
+              "application/json": {
+                schema: {
+                  oneOf: [
+                    { $ref: "#/components/schemas/CronBatchResponse" },
+                    { $ref: "#/components/schemas/CronResponse" },
+                  ],
+                },
+              },
+            },
           },
           "401": {
             description: "Sai/thiếu secret",
