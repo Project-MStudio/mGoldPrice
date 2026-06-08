@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
-import { desc, eq } from "drizzle-orm";
-import { getDb } from "@/lib/db";
-import { priceHistory } from "@/lib/db/schema";
 import { DEFAULT_STORE, getStore } from "@/lib/stores";
-import { decodeData } from "@/lib/encode";
+import { getCurrentPrice } from "@/lib/queries";
 import { corsHeaders } from "@/lib/cors";
 
 export const runtime = "nodejs";
@@ -21,22 +18,6 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Unknown store" }, { status: 404, headers: corsHeaders() });
   }
 
-  const db = getDb();
-  const [latest] = await db
-    .select()
-    .from(priceHistory)
-    .where(eq(priceHistory.storeId, cfg.storeId))
-    .orderBy(desc(priceHistory.createdAt), desc(priceHistory.id))
-    .limit(1);
-
-  return NextResponse.json(
-    {
-      store_id: cfg.storeId,
-      store_name: cfg.name,
-      created_at: latest?.createdAt ?? null,
-      updated_at: latest?.updatedAt ?? null,
-      data: latest ? decodeData(latest.dataString) : null,
-    },
-    { headers: corsHeaders() },
-  );
+  const payload = await getCurrentPrice(cfg);
+  return NextResponse.json(payload, { headers: corsHeaders() });
 }
