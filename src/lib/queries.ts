@@ -2,7 +2,7 @@ import { asc, desc, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { priceHistory, store } from "@/lib/db/schema";
 import { decodeData } from "@/lib/encode";
-import type { GoldData, StoreConfig } from "@/lib/stores";
+import type { GoldData } from "@/lib/stores";
 
 export interface StoreInfo {
   store_id: string;
@@ -28,12 +28,18 @@ export interface PriceEntry {
   };
 }
 
-export interface HistoryEntry {
+export interface HistoryItem {
   id: number;
-  store_id: string;
   created_at: string;
   updated_at: string;
   data: GoldData;
+}
+
+// /api/history trả mảng song song với /api/price: [{ store, store_name, history: [...] }, ...]
+export interface StoreHistory {
+  store: string;
+  store_name: string;
+  history: HistoryItem[];
 }
 
 async function priceForStore(storeId: string, storeName: string): Promise<PriceEntry> {
@@ -63,19 +69,29 @@ export async function getPrices(storeId?: string | null): Promise<PriceEntry[]> 
   return Promise.all(targets.map((s) => priceForStore(s.store_id, s.name)));
 }
 
-export async function getHistory(cfg: StoreConfig): Promise<HistoryEntry[]> {
+async function historyForStore(storeId: string, storeName: string): Promise<StoreHistory> {
   const db = getDb();
   const rows = await db
     .select()
     .from(priceHistory)
-    .where(eq(priceHistory.storeId, cfg.storeId))
+    .where(eq(priceHistory.storeId, storeId))
     .orderBy(asc(priceHistory.createdAt), asc(priceHistory.id));
 
-  return rows.map((r) => ({
-    id: r.id,
-    store_id: r.storeId,
-    created_at: r.createdAt.toISOString(),
-    updated_at: r.updatedAt.toISOString(),
-    data: decodeData(r.dataString) as unknown as GoldData,
-  }));
+  return {
+    store: storeId,
+    store_name: storeName,
+    history: rows.map((r) => ({
+      id: r.id,
+      created_at: r.createdAt.toISOString(),
+      updated_at: r.updatedAt.toISOString(),
+      data: decodeData(r.dataString) as unknown as GoldData,
+    })),
+  };
+}
+
+// Trả mảng lịch sử theo store. Không truyền storeId -> tất cả store; có -> lọc còn store đó.
+export async function getHistories(storeId?: string | null): Promise<StoreHistory[]> {
+  const stores = await getStores();
+  const targets = storeId ? stores.filter((s) => s.store_id === storeId) : stores;
+  return Promise.all(targets.map((s) => historyForStore(s.store_id, s.name)));
 }

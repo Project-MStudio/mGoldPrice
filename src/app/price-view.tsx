@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 interface GoldRow {
   name: string;
@@ -21,9 +21,15 @@ interface PriceEntry {
     data: GoldData | null;
   };
 }
-interface HistoryItem {
+interface StoreHistory {
+  store: string;
+  store_name: string;
+  history: { id: number; created_at: string; updated_at: string; data: GoldData }[];
+}
+interface HistoryRow {
   id: number;
-  store_id: string;
+  store: string;
+  store_name: string;
   created_at: string;
   updated_at: string;
   data: GoldData;
@@ -121,48 +127,31 @@ function FilterButton({
 export default function PriceView({ stores }: { stores: StoreInfo[] }) {
   const [selected, setSelected] = useState<string>(ALL);
   const [prices, setPrices] = useState<PriceEntry[]>([]);
-  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [history, setHistory] = useState<HistoryRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
 
-  const nameOf = useMemo(() => {
-    const m: Record<string, string> = {};
-    for (const s of stores) m[s.store_id] = s.name;
-    return m;
-  }, [stores]);
-
-  const load = useCallback(
-    async (sel: string) => {
-      try {
-        const targets = sel === ALL ? stores.map((s) => s.store_id) : [sel];
-        if (targets.length === 0) {
-          setPrices([]);
-          setHistory([]);
-          return;
-        }
-        const priceUrl = sel === ALL ? "/api/price" : `/api/price?store=${sel}`;
-        const [priceRes, histRes] = await Promise.all([
-          fetch(priceUrl, { cache: "no-store" }).then((r) => r.json()),
-          Promise.all(
-            targets.map((id) =>
-              fetch(`/api/history?store=${id}`, { cache: "no-store" }).then((r) => r.json()),
-            ),
-          ),
-        ]);
-        setPrices(priceRes as PriceEntry[]);
-        const merged = (histRes as { history: HistoryItem[] }[])
-          .flatMap((h) => h.history)
-          // created_at là ISO -> so sánh chuỗi = đúng thứ tự thời gian; mới nhất lên đầu
-          .sort((a, b) => b.created_at.localeCompare(a.created_at));
-        setHistory(merged);
-        setError(null);
-        setLastSync(new Date().toLocaleTimeString("vi-VN", { hour12: false }));
-      } catch (e) {
-        setError((e as Error).message);
-      }
-    },
-    [stores],
-  );
+  const load = useCallback(async (sel: string) => {
+    try {
+      const q = sel === ALL ? "" : `?store=${sel}`;
+      const [priceRes, histRes] = await Promise.all([
+        fetch(`/api/price${q}`, { cache: "no-store" }).then((r) => r.json()),
+        fetch(`/api/history${q}`, { cache: "no-store" }).then((r) => r.json()),
+      ]);
+      setPrices(priceRes as PriceEntry[]);
+      const merged = (histRes as StoreHistory[])
+        .flatMap((sh) =>
+          sh.history.map((it) => ({ ...it, store: sh.store, store_name: sh.store_name })),
+        )
+        // created_at là ISO -> so sánh chuỗi = đúng thứ tự thời gian; mới nhất lên đầu
+        .sort((a, b) => b.created_at.localeCompare(a.created_at));
+      setHistory(merged);
+      setError(null);
+      setLastSync(new Date().toLocaleTimeString("vi-VN", { hour12: false }));
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }, []);
 
   useEffect(() => {
     load(selected);
@@ -230,9 +219,9 @@ export default function PriceView({ stores }: { stores: StoreInfo[] }) {
           ) : (
             <ul className="divide-border-subtle/40 divide-y">
               {history.map((h) => (
-                <li key={`${h.store_id}-${h.id}`} className="py-3 first:pt-0 last:pb-0">
+                <li key={`${h.store}-${h.id}`} className="py-3 first:pt-0 last:pb-0">
                   <div className="mb-2 flex items-center gap-2">
-                    <StoreBadge name={nameOf[h.store_id] ?? h.store_id} />
+                    <StoreBadge name={h.store_name} />
                     <span className="text-secondary text-xs tabular-nums">{fmt(h.created_at)}</span>
                   </div>
                   <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm">

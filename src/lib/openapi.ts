@@ -70,22 +70,20 @@ export const openapiSpec = {
         type: "object",
         properties: {
           id: { type: "integer", example: 1 },
-          store_id: { type: "string", example: "kimphat" },
           created_at: { type: "string", format: "date-time" },
           updated_at: { type: "string", format: "date-time" },
           data: { $ref: "#/components/schemas/GoldData" },
         },
-        required: ["id", "store_id", "created_at", "updated_at", "data"],
+        required: ["id", "created_at", "updated_at", "data"],
       },
-      HistoryResponse: {
+      StoreHistory: {
         type: "object",
         properties: {
-          store_id: { type: "string", example: "kimphat" },
+          store: { type: "string", example: "kimphat" },
           store_name: { type: "string", example: "Kim Phát" },
-          count: { type: "integer", example: 12 },
           history: { type: "array", items: { $ref: "#/components/schemas/HistoryItem" } },
         },
-        required: ["store_id", "store_name", "count", "history"],
+        required: ["store", "store_name", "history"],
       },
       CronResponse: {
         type: "object",
@@ -210,13 +208,43 @@ export const openapiSpec = {
     "/api/history": {
       get: {
         tags: ["public"],
-        summary: "Lịch sử thay đổi",
-        description: "Tất cả row theo store_id, decode từng cái, sort theo thời gian (cũ → mới).",
+        summary: "Lịch sử thay đổi (mảng theo store)",
+        description:
+          "Trả MẢNG [{ store, store_name, history }]. Không có `?store=` → tất cả store; có → lọc còn store đó. history sort theo thời gian (cũ → mới).",
         parameters: [{ $ref: "#/components/parameters/StoreParam" }],
         responses: {
           "200": {
             description: "OK",
-            content: { "application/json": { schema: { $ref: "#/components/schemas/HistoryResponse" } } },
+            content: {
+              "application/json": {
+                schema: { type: "array", items: { $ref: "#/components/schemas/StoreHistory" } },
+              },
+            },
+          },
+          "404": {
+            description: "Unknown store",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
+          },
+        },
+      },
+    },
+    "/api/history/{store}": {
+      get: {
+        tags: ["public"],
+        summary: "Lịch sử theo store",
+        description: "Trả 1 object { store, store_name, history } cho đúng store trong path.",
+        parameters: [
+          {
+            name: "store",
+            in: "path",
+            required: true,
+            schema: { type: "string", example: "kimphat" },
+          },
+        ],
+        responses: {
+          "200": {
+            description: "OK",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/StoreHistory" } } },
           },
           "404": {
             description: "Unknown store",

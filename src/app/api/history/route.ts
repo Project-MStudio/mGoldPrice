@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { DEFAULT_STORE, getStore } from "@/lib/stores";
-import { getHistory } from "@/lib/queries";
+import { getStore } from "@/lib/stores";
+import { getHistories } from "@/lib/queries";
 import { corsHeaders } from "@/lib/cors";
 
 export const runtime = "nodejs";
@@ -10,17 +10,14 @@ export function OPTIONS() {
   return new Response(null, { status: 204, headers: corsHeaders() });
 }
 
-// GET /api/history?store=kimphat — TẤT CẢ row theo store_id, decode từng cái, sort theo thời gian.
+// GET /api/history            -> mảng [{ store, store_name, history: [...] }, ...] (tất cả store)
+// GET /api/history?store=kimphat -> mảng lọc còn store đó (1 phần tử)
 export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const cfg = getStore(searchParams.get("store") ?? DEFAULT_STORE);
-  if (!cfg) {
+  const storeParam = new URL(req.url).searchParams.get("store");
+  if (storeParam && !getStore(storeParam)) {
     return NextResponse.json({ error: "Unknown store" }, { status: 404, headers: corsHeaders() });
   }
 
-  const history = await getHistory(cfg);
-  return NextResponse.json(
-    { store_id: cfg.storeId, store_name: cfg.name, count: history.length, history },
-    { headers: corsHeaders() },
-  );
+  const histories = await getHistories(storeParam);
+  return NextResponse.json(histories, { headers: corsHeaders() });
 }

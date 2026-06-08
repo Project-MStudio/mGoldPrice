@@ -42,7 +42,8 @@ Round-trip test: `npm test`.
 | `GET /api/stores`           | Danh sách store đã đăng ký (từ bảng `store`).                                                   |
 | `GET /api/price`            | **Mảng** `[{ store, store_name, price: { created_at, updated_at, data } }]`. Không `?store=` → tất cả store; có → lọc còn store đó (1 phần tử). |
 | `GET /api/price/{store}`    | **1 object** `{ store, store_name, price }` cho đúng store đó (404 nếu store lạ).                |
-| `GET /api/history?store=...`| Tất cả row theo `store_id`, decode từng cái, sort theo thời gian.                               |
+| `GET /api/history`          | **Mảng** `[{ store, store_name, history: [{ id, created_at, updated_at, data }] }]`. Không `?store=` → tất cả; có → lọc còn store đó. |
+| `GET /api/history/{store}`  | **1 object** `{ store, store_name, history }` cho đúng store đó (404 nếu store lạ).             |
 | `GET /api/cron`             | **Không có `?store=`** → cào **TẤT CẢ store** trong bảng store, trả `{ count, results: [...] }`. **Có `?store=`** → cào 1 store, trả `{ store_id, changed, action, data }`. Cào → encode → so với lần trước cùng store: khác thì **insert**, giống thì **update** (refresh `updated_at`). |
 
 CORS mở (`*`) cho mobile. Tất cả route `runtime=nodejs`, `dynamic=force-dynamic`.
@@ -52,7 +53,7 @@ CORS mở (`*`) cho mobile. Tất cả route `runtime=nodejs`, `dynamic=force-dy
 | Route | Mô tả |
 | ----- | ----- |
 | `GET /api/docs` | Trang Swagger UI (nạp từ CDN), xem + "Try it out". |
-| `GET /api/openapi.json` | OpenAPI 3.1 spec mô tả `/api/stores`, `/api/price`, `/api/history`, `/api/cron`. |
+| `GET /api/openapi.json` | OpenAPI 3.1 spec mô tả toàn bộ API (`/api/stores`, `/api/price[/{store}]`, `/api/history[/{store}]`, `/api/cron`). |
 
 Zero-dependency: spec viết tay ở `src/lib/openapi.ts`, không cài thêm package. Bật `/api/cron` trong "Try it out" cần điền `x-cron-secret` (nút **Authorize**). Production: `https://m-gold-price.vercel.app/api/docs`.
 
