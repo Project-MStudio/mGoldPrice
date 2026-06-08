@@ -45,6 +45,15 @@ Round-trip test: `npm test`.
 
 CORS mở (`*`) cho mobile. Tất cả route `runtime=nodejs`, `dynamic=force-dynamic`.
 
+### Swagger / OpenAPI (chỉ doc API)
+
+| Route | Mô tả |
+| ----- | ----- |
+| `GET /api/docs` | Trang Swagger UI (nạp từ CDN), xem + "Try it out". |
+| `GET /api/openapi.json` | OpenAPI 3.1 spec mô tả `/api/price`, `/api/history`, `/api/cron`. |
+
+Zero-dependency: spec viết tay ở `src/lib/openapi.ts`, không cài thêm package. Bật `/api/cron` trong "Try it out" cần điền `x-cron-secret` (nút **Authorize**). Production: `https://m-gold-price.vercel.app/api/docs`.
+
 ## External cron 5 phút (KHÔNG dùng Vercel Cron)
 
 > Vì sao không dùng Vercel Cron: free tier (Hobby) chỉ cho cron **1 lần/ngày** — biểu thức chạy dày hơn (vd `*/5 * * * *`) sẽ **deploy fail**. 5 phút/lần cần Vercel Pro. Nên dùng external cron (miễn phí, tần suất tuỳ ý).
