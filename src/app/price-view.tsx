@@ -12,12 +12,14 @@ interface GoldData {
   domestic: GoldRow[];
   world: GoldRow[];
 }
-interface PricePayload {
-  store_id: string;
+interface PriceEntry {
+  store: string;
   store_name: string;
-  created_at: string | null;
-  updated_at: string | null;
-  data: GoldData | null;
+  price: {
+    created_at: string | null;
+    updated_at: string | null;
+    data: GoldData | null;
+  };
 }
 interface HistoryItem {
   id: number;
@@ -118,7 +120,7 @@ function FilterButton({
 
 export default function PriceView({ stores }: { stores: StoreInfo[] }) {
   const [selected, setSelected] = useState<string>(ALL);
-  const [prices, setPrices] = useState<PricePayload[]>([]);
+  const [prices, setPrices] = useState<PriceEntry[]>([]);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
@@ -138,19 +140,16 @@ export default function PriceView({ stores }: { stores: StoreInfo[] }) {
           setHistory([]);
           return;
         }
+        const priceUrl = sel === ALL ? "/api/price" : `/api/price?store=${sel}`;
         const [priceRes, histRes] = await Promise.all([
-          Promise.all(
-            targets.map((id) =>
-              fetch(`/api/price?store=${id}`, { cache: "no-store" }).then((r) => r.json()),
-            ),
-          ),
+          fetch(priceUrl, { cache: "no-store" }).then((r) => r.json()),
           Promise.all(
             targets.map((id) =>
               fetch(`/api/history?store=${id}`, { cache: "no-store" }).then((r) => r.json()),
             ),
           ),
         ]);
-        setPrices(priceRes as PricePayload[]);
+        setPrices(priceRes as PriceEntry[]);
         const merged = (histRes as { history: HistoryItem[] }[])
           .flatMap((h) => h.history)
           // created_at là ISO -> so sánh chuỗi = đúng thứ tự thời gian; mới nhất lên đầu
@@ -210,15 +209,15 @@ export default function PriceView({ stores }: { stores: StoreInfo[] }) {
       <div className="grid gap-5">
         {/* Giá hiện tại theo từng store đang chọn */}
         {prices.map((p) => (
-          <Card key={p.store_id} title={`${p.store_name} · cập nhật ${fmt(p.updated_at)}`}>
+          <Card key={p.store} title={`${p.store_name} · cập nhật ${fmt(p.price.updated_at)}`}>
             <div className="text-muted mb-1 text-xs tracking-wide uppercase">Trong nước</div>
-            <PriceTable rows={p.data?.domestic ?? []} />
-            {p.data?.world?.length ? (
+            <PriceTable rows={p.price.data?.domestic ?? []} />
+            {p.price.data?.world?.length ? (
               <>
                 <div className="text-muted mt-4 mb-1 text-xs tracking-wide uppercase">
                   Thế giới
                 </div>
-                <PriceTable rows={p.data.world} />
+                <PriceTable rows={p.price.data.world} />
               </>
             ) : null}
           </Card>

@@ -10,14 +10,13 @@ export function OPTIONS() {
   return new Response(null, { status: 204, headers: corsHeaders() });
 }
 
-// GET /api/price            -> mảng giá tất cả store: [{ store, store_name, price }, ...]
-// GET /api/price?store=kimphat -> mảng lọc còn store đó (1 phần tử).
-export async function GET(req: Request) {
-  const storeParam = new URL(req.url).searchParams.get("store");
-  if (storeParam && !getStore(storeParam)) {
+// GET /api/price/{store} -> 1 object { store, store_name, price } cho đúng store đó.
+export async function GET(_req: Request, { params }: { params: Promise<{ store: string }> }) {
+  const { store } = await params;
+  if (!getStore(store)) {
     return NextResponse.json({ error: "Unknown store" }, { status: 404, headers: corsHeaders() });
   }
 
-  const prices = await getPrices(storeParam);
-  return NextResponse.json(prices, { headers: corsHeaders() });
+  const [entry] = await getPrices(store);
+  return NextResponse.json(entry, { headers: corsHeaders() });
 }

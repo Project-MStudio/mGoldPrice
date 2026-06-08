@@ -49,16 +49,22 @@ export const openapiSpec = {
         },
         required: ["domestic", "world"],
       },
-      PriceResponse: {
+      PriceEntry: {
         type: "object",
         properties: {
-          store_id: { type: "string", example: "kimphat" },
+          store: { type: "string", example: "kimphat" },
           store_name: { type: "string", example: "Kim Phát" },
-          created_at: { type: ["string", "null"], format: "date-time" },
-          updated_at: { type: ["string", "null"], format: "date-time" },
-          data: { oneOf: [{ $ref: "#/components/schemas/GoldData" }, { type: "null" }] },
+          price: {
+            type: "object",
+            properties: {
+              created_at: { type: ["string", "null"], format: "date-time" },
+              updated_at: { type: ["string", "null"], format: "date-time" },
+              data: { oneOf: [{ $ref: "#/components/schemas/GoldData" }, { type: "null" }] },
+            },
+            required: ["created_at", "updated_at", "data"],
+          },
         },
-        required: ["store_id", "store_name", "created_at", "updated_at", "data"],
+        required: ["store", "store_name", "price"],
       },
       HistoryItem: {
         type: "object",
@@ -156,13 +162,43 @@ export const openapiSpec = {
     "/api/price": {
       get: {
         tags: ["public"],
-        summary: "Giá hiện tại",
-        description: "Row mới nhất theo store_id, decode về JSON.",
+        summary: "Giá hiện tại (mảng theo store)",
+        description:
+          "Trả MẢNG [{ store, store_name, price }]. Không có `?store=` → tất cả store; có → lọc còn store đó (1 phần tử). price là row mới nhất đã decode.",
         parameters: [{ $ref: "#/components/parameters/StoreParam" }],
         responses: {
           "200": {
             description: "OK",
-            content: { "application/json": { schema: { $ref: "#/components/schemas/PriceResponse" } } },
+            content: {
+              "application/json": {
+                schema: { type: "array", items: { $ref: "#/components/schemas/PriceEntry" } },
+              },
+            },
+          },
+          "404": {
+            description: "Unknown store",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
+          },
+        },
+      },
+    },
+    "/api/price/{store}": {
+      get: {
+        tags: ["public"],
+        summary: "Giá hiện tại theo store",
+        description: "Trả 1 object { store, store_name, price } cho đúng store trong path.",
+        parameters: [
+          {
+            name: "store",
+            in: "path",
+            required: true,
+            schema: { type: "string", example: "kimphat" },
+          },
+        ],
+        responses: {
+          "200": {
+            description: "OK",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/PriceEntry" } } },
           },
           "404": {
             description: "Unknown store",

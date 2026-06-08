@@ -17,12 +17,15 @@ export async function getStores(): Promise<StoreInfo[]> {
 }
 
 // Đọc DB + decode (dùng chung cho /api/price, /api/history VÀ trang chủ).
-export interface PricePayload {
-  store_id: string;
+// /api/price trả mảng: [{ store, store_name, price: { created_at, updated_at, data } }, ...]
+export interface PriceEntry {
+  store: string;
   store_name: string;
-  created_at: string | null;
-  updated_at: string | null;
-  data: GoldData | null;
+  price: {
+    created_at: string | null;
+    updated_at: string | null;
+    data: GoldData | null;
+  };
 }
 
 export interface HistoryEntry {
@@ -33,22 +36,31 @@ export interface HistoryEntry {
   data: GoldData;
 }
 
-export async function getCurrentPrice(cfg: StoreConfig): Promise<PricePayload> {
+async function priceForStore(storeId: string, storeName: string): Promise<PriceEntry> {
   const db = getDb();
   const [latest] = await db
     .select()
     .from(priceHistory)
-    .where(eq(priceHistory.storeId, cfg.storeId))
+    .where(eq(priceHistory.storeId, storeId))
     .orderBy(desc(priceHistory.createdAt), desc(priceHistory.id))
     .limit(1);
 
   return {
-    store_id: cfg.storeId,
-    store_name: cfg.name,
-    created_at: latest?.createdAt.toISOString() ?? null,
-    updated_at: latest?.updatedAt.toISOString() ?? null,
-    data: latest ? (decodeData(latest.dataString) as unknown as GoldData) : null,
+    store: storeId,
+    store_name: storeName,
+    price: {
+      created_at: latest?.createdAt.toISOString() ?? null,
+      updated_at: latest?.updatedAt.toISOString() ?? null,
+      data: latest ? (decodeData(latest.dataString) as unknown as GoldData) : null,
+    },
   };
+}
+
+// Trả mảng giá theo store. Không truyền storeId -> tất cả store; có -> lọc còn store đó.
+export async function getPrices(storeId?: string | null): Promise<PriceEntry[]> {
+  const stores = await getStores();
+  const targets = storeId ? stores.filter((s) => s.store_id === storeId) : stores;
+  return Promise.all(targets.map((s) => priceForStore(s.store_id, s.name)));
 }
 
 export async function getHistory(cfg: StoreConfig): Promise<HistoryEntry[]> {
