@@ -14,11 +14,10 @@ const db = drizzle(neon(url));
 
 await db
   .insert(store)
-  .values({
-    storeId: "kimphat",
-    name: "Kim Phát",
-    website: "https://kimphat.evosoft.vn/",
-  })
+  .values([
+    { storeId: "kimphat", name: "Kim Phát", website: "https://kimphat.evosoft.vn/" },
+    { storeId: "mihong", name: "Mi Hồng", website: "https://www.mihong.vn/gia-vang-trong-nuoc" },
+  ])
   .onConflictDoNothing();
 
-console.log("Seeded store: kimphat (Kim Phát)");
+console.log("Seeded stores: kimphat (Kim Phát), mihong (Mi Hồng)");

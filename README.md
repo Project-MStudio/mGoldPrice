@@ -73,17 +73,28 @@ curl -s "https://<app>.vercel.app/api/cron?store=kimphat" \
 
 ## Thêm tiệm mới (không đổi core code)
 
-1. Viết parser cho tiệm trong `src/lib/stores.ts` và thêm 1 entry vào `STORES`:
-   ```ts
-   mihong: {
-     storeId: "mihong",
-     name: "Mi Hồng",
-     website: "https://...",
-     parse: parseMihong, // hàm cheerio riêng cho DOM của tiệm đó
-   },
-   ```
-2. Insert row store vào DB (giống seed, đổi `storeId/name/website`).
-3. Thêm 1 external cron job với `?store=mihong`.
+Mỗi store tự lo fetch nguồn (HTML hoặc API JSON) + parse qua `fetchData()`:
+
+```ts
+// src/lib/stores.ts -> STORES
+tiemmoi: {
+  storeId: "tiemmoi",
+  name: "Tiệm Mới",
+  website: "https://...",            // trang hiển thị cho user
+  fetchData: async () => {           // nguồn cào thật + parse -> GoldData
+    const res = await fetch("https://nguon-that/...");
+    return parseTiemMoi(await res.text()); // hoặc map JSON nếu là API
+  },
+},
+```
+
+1. Thêm entry vào `STORES` như trên (HTML thì dùng cheerio; SPA/JS-render thì cào API JSON).
+2. Insert row store vào DB (thêm vào `src/lib/db/seed.ts` rồi `npm run db:seed`, idempotent).
+3. Thêm 1 external cron job với `?store=tiemmoi`.
+
+`/api/stores`, `/api/price`, `/api/history`, `/api/cron` đều nhận `?store=` nên dùng ngay, không sửa code.
+
+**Stores hiện có:** `kimphat` (Kim Phát — cào HTML tĩnh), `mihong` (Mi Hồng — trang là SPA/JS-render nên cào API `https://api.mihong.vn/v1/gold-prices?market=domestic`).
 
 `/api/price`, `/api/history`, `/api/cron` đều nhận `?store=` nên dùng ngay, không sửa.
 

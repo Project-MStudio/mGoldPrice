@@ -4,9 +4,6 @@ import { priceHistory } from "@/lib/db/schema";
 import { encodeData } from "@/lib/encode";
 import type { GoldData, StoreConfig } from "@/lib/stores";
 
-const UA =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
-
 export interface ScrapeResult {
   store_id: string;
   changed: boolean;
@@ -15,14 +12,10 @@ export interface ScrapeResult {
 }
 
 // Logic cào + so khớp + lưu (dùng chung cho /api/cron VÀ trang chủ load).
+// Mỗi store tự lo fetch nguồn (HTML hoặc API JSON) qua cfg.fetchData().
 // Khác lần trước cùng store_id -> INSERT row mới; giống -> UPDATE row mới nhất (refresh updated_at).
 export async function scrapeAndStore(cfg: StoreConfig): Promise<ScrapeResult> {
-  const res = await fetch(cfg.website, { headers: { "User-Agent": UA }, cache: "no-store" });
-  if (!res.ok) {
-    throw new Error(`Fetch source failed: ${res.status}`);
-  }
-  const html = await res.text();
-  const data = cfg.parse(html);
+  const data = await cfg.fetchData();
   const encoded = encodeData(data);
 
   const db = getDb();
