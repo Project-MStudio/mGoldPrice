@@ -1,8 +1,20 @@
 import { asc, desc, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { priceHistory } from "@/lib/db/schema";
+import { priceHistory, store } from "@/lib/db/schema";
 import { decodeData } from "@/lib/encode";
 import type { GoldData, StoreConfig } from "@/lib/stores";
+
+export interface StoreInfo {
+  store_id: string;
+  name: string;
+  website: string;
+}
+
+export async function getStores(): Promise<StoreInfo[]> {
+  const db = getDb();
+  const rows = await db.select().from(store).orderBy(asc(store.storeId));
+  return rows.map((r) => ({ store_id: r.storeId, name: r.name, website: r.website }));
+}
 
 // Đọc DB + decode (dùng chung cho /api/price, /api/history VÀ trang chủ).
 export interface PricePayload {

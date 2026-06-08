@@ -39,6 +39,7 @@ Round-trip test: `npm test`.
 
 | Route                       | Mô tả                                                                                          |
 | --------------------------- | ---------------------------------------------------------------------------------------------- |
+| `GET /api/stores`           | Danh sách store đã đăng ký (từ bảng `store`).                                                   |
 | `GET /api/price?store=...`  | Giá hiện tại: row mới nhất theo `store_id`, decode về JSON. Mặc định `kimphat`.                 |
 | `GET /api/history?store=...`| Tất cả row theo `store_id`, decode từng cái, sort theo thời gian.                               |
 | `GET /api/cron?store=...`   | Cào → parse → encode → so với lần trước cùng store: khác thì **insert**, giống thì **update** (refresh `updated_at`). Trả `{ store_id, changed, action, data }`. |

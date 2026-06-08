@@ -91,6 +91,23 @@ export const openapiSpec = {
         },
         required: ["store_id", "changed", "action", "data"],
       },
+      Store: {
+        type: "object",
+        properties: {
+          store_id: { type: "string", example: "kimphat" },
+          name: { type: "string", example: "Kim Phát" },
+          website: { type: "string", example: "https://kimphat.evosoft.vn/" },
+        },
+        required: ["store_id", "name", "website"],
+      },
+      StoresResponse: {
+        type: "object",
+        properties: {
+          count: { type: "integer", example: 1 },
+          stores: { type: "array", items: { $ref: "#/components/schemas/Store" } },
+        },
+        required: ["count", "stores"],
+      },
       Error: {
         type: "object",
         properties: { error: { type: "string", example: "Unauthorized" } },
@@ -99,6 +116,19 @@ export const openapiSpec = {
     },
   },
   paths: {
+    "/api/stores": {
+      get: {
+        tags: ["public"],
+        summary: "Danh sách store",
+        description: "Tất cả store đã đăng ký (từ bảng store).",
+        responses: {
+          "200": {
+            description: "OK",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/StoresResponse" } } },
+          },
+        },
+      },
+    },
     "/api/price": {
       get: {
         tags: ["public"],
