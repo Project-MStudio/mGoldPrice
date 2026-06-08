@@ -48,6 +48,12 @@ Round-trip test: `npm test`.
 
 CORS mở (`*`) cho mobile. Tất cả route `runtime=nodejs`, `dynamic=force-dynamic`.
 
+### Cache (Upstash Redis) + tốc độ
+
+- GET (`getStores`/`getPrices`/`getHistories` trong `src/lib/queries.ts`) đọc **cache trước**, miss mới query DB rồi set cache (TTL 600s). Ghi DB (`scrapeAndStore`) **invalidate** key liên quan (`price:<store>`, `price:all`, `history:<store>`, `history:all`) → GET kế tiếp lấy data mới.
+- Cache qua **Upstash Redis REST** (`@upstash/redis`, hợp serverless). Set 2 env `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`. **Thiếu env → cache tự tắt**, API đọc thẳng DB (không vỡ). Lỗi Redis cũng nuốt, không chặn request.
+- **Trang chủ SSR**: server đọc data (cache/DB) render sẵn vào HTML rồi mới giao client (không còn cảnh render UI xong mới call API). Trang **không scrape khi load** nữa — cào do cron lo → trang nhẹ & nhanh.
+
 ### Swagger / OpenAPI (chỉ doc API)
 
 | Route | Mô tả |
@@ -108,6 +114,6 @@ Xong. Cron duy nhất `/api/cron` (không `?store=`) **tự động cào store m
 1 trang dark-only: `src/app/page.tsx` (server component) + `src/app/price-view.tsx` (client). Bộ token màu khai báo CSS-first qua `@theme` trong `src/app/globals.css`.
 
 - **Bộ lọc store**: chọn `Tất cả` / từng tiệm (Kim Phát, Mi Hồng...). "Tất cả" hiển thị giá từng tiệm + lịch sử gộp; history mỗi dòng có **nhãn store** để biết tiệm nào đổi. Danh sách store lấy từ `/api/stores` (server truyền xuống) nên thêm tiệm là tự có trong selector.
-- **Mỗi lần load web tự cào + lưu DB** (giống cron): server component gọi `scrapeAndStore()` cho tất cả store mỗi request, rồi render data mới nhất → có data ngay cả khi chưa set cron. Logic dùng chung trong `src/lib/scrape.ts` (ghi) + `src/lib/queries.ts` (đọc), chia sẻ với cả các API route.
-- Sau đó client auto-refresh `/api/price` + `/api/history` mỗi 30s (chỉ đọc, không cào).
-- Vì page tự cào, external cron là tuỳ chọn — hữu ích để cập nhật khi không ai mở web. Lưu ý: scrape mỗi page-load tăng tải lên trang nguồn; nếu traffic cao nên thêm guard staleness trong `page.tsx`.
+- **SSR**: server component (`page.tsx`) đọc sẵn `getStores`/`getPrices`/`getHistories` (qua cache/DB) và render thẳng vào HTML → có data ngay từ first paint. Logic đọc dùng chung trong `src/lib/queries.ts`.
+- Sau đó client auto-refresh `/api/price` + `/api/history` mỗi 30s (chỉ đọc, đã có cache).
+- Trang **không scrape khi load** — việc cào do cron `/api/cron` (5 phút) lo, nên trang nhẹ & nhanh.

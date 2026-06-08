@@ -150,10 +150,18 @@ function FilterButton({
   );
 }
 
-export default function PriceView({ stores }: { stores: StoreInfo[] }) {
+export default function PriceView({
+  stores,
+  initialPrices,
+  initialHistory,
+}: {
+  stores: StoreInfo[];
+  initialPrices: PriceEntry[];
+  initialHistory: HistoryRow[];
+}) {
   const [selected, setSelected] = useState<string>(ALL);
-  const [prices, setPrices] = useState<PriceEntry[]>([]);
-  const [history, setHistory] = useState<HistoryRow[]>([]);
+  const [prices, setPrices] = useState<PriceEntry[]>(initialPrices);
+  const [history, setHistory] = useState<HistoryRow[]>(initialHistory);
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
 

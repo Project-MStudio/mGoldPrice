@@ -2,6 +2,7 @@ import { desc, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { priceHistory } from "@/lib/db/schema";
 import { encodeData } from "@/lib/encode";
+import { cacheDel, cacheKeys } from "@/lib/cache";
 import type { GoldData, StoreConfig } from "@/lib/stores";
 
 export interface ScrapeResult {
@@ -41,6 +42,14 @@ export async function scrapeAndStore(cfg: StoreConfig): Promise<ScrapeResult> {
     changed = false;
     action = "update";
   }
+
+  // Ghi DB xong -> invalidate cache liên quan (per-store + aggregate all) để GET đọc data mới.
+  await cacheDel(
+    cacheKeys.price(cfg.storeId),
+    cacheKeys.pricesAll,
+    cacheKeys.history(cfg.storeId),
+    cacheKeys.historiesAll,
+  );
 
   return { store_id: cfg.storeId, changed, action, data };
 }

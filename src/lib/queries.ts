@@ -2,6 +2,7 @@ import { asc, desc, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { priceHistory, store } from "@/lib/db/schema";
 import { decodeData } from "@/lib/encode";
+import { cacheGet, cacheKeys, cacheSet } from "@/lib/cache";
 import type { GoldData } from "@/lib/stores";
 
 export interface StoreInfo {
@@ -11,9 +12,14 @@ export interface StoreInfo {
 }
 
 export async function getStores(): Promise<StoreInfo[]> {
+  const cached = await cacheGet<StoreInfo[]>(cacheKeys.stores);
+  if (cached) return cached;
+
   const db = getDb();
   const rows = await db.select().from(store).orderBy(asc(store.storeId));
-  return rows.map((r) => ({ store_id: r.storeId, name: r.name, website: r.website }));
+  const result = rows.map((r) => ({ store_id: r.storeId, name: r.name, website: r.website }));
+  await cacheSet(cacheKeys.stores, result);
+  return result;
 }
 
 // Đọc DB + decode (dùng chung cho /api/price, /api/history VÀ trang chủ).
@@ -64,9 +70,15 @@ async function priceForStore(storeId: string, storeName: string): Promise<PriceE
 
 // Trả mảng giá theo store. Không truyền storeId -> tất cả store; có -> lọc còn store đó.
 export async function getPrices(storeId?: string | null): Promise<PriceEntry[]> {
+  const key = storeId ? cacheKeys.price(storeId) : cacheKeys.pricesAll;
+  const cached = await cacheGet<PriceEntry[]>(key);
+  if (cached) return cached;
+
   const stores = await getStores();
   const targets = storeId ? stores.filter((s) => s.store_id === storeId) : stores;
-  return Promise.all(targets.map((s) => priceForStore(s.store_id, s.name)));
+  const result = await Promise.all(targets.map((s) => priceForStore(s.store_id, s.name)));
+  await cacheSet(key, result);
+  return result;
 }
 
 async function historyForStore(storeId: string, storeName: string): Promise<StoreHistory> {
@@ -91,7 +103,13 @@ async function historyForStore(storeId: string, storeName: string): Promise<Stor
 
 // Trả mảng lịch sử theo store. Không truyền storeId -> tất cả store; có -> lọc còn store đó.
 export async function getHistories(storeId?: string | null): Promise<StoreHistory[]> {
+  const key = storeId ? cacheKeys.history(storeId) : cacheKeys.historiesAll;
+  const cached = await cacheGet<StoreHistory[]>(key);
+  if (cached) return cached;
+
   const stores = await getStores();
   const targets = storeId ? stores.filter((s) => s.store_id === storeId) : stores;
-  return Promise.all(targets.map((s) => historyForStore(s.store_id, s.name)));
+  const result = await Promise.all(targets.map((s) => historyForStore(s.store_id, s.name)));
+  await cacheSet(key, result);
+  return result;
 }
