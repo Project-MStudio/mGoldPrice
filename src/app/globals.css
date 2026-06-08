@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+/* Tailwind v4 CSS-first config: bộ token màu dark-only -> sinh utilities
+   (bg-app, text-secondary, border-subtle, rounded-card, font-display, ...) */
+@theme {
+  /* backgrounds */
+  --color-app: #0d0f0b;
+  --color-elevated: #1a1c18;
+  --color-tonal: #242621;
+  --color-highlight: #2f312b;
+
+  /* text */
+  --color-primary: #fdfdf6;
+  --color-secondary: #abaca5;
+  --color-muted: #757670;
+
+  /* brand */
+  --color-brand: #ccff00;
+  --color-brand-secondary: #99ff00;
+  --color-tertiary: #c4ab04;
+
+  /* borders */
+  --color-border-subtle: #474944;
+  --color-border-default: #757670;
+
+  /* status */
+  --color-success: #99ff00;
+  --color-warning: #ffb800;
+  --color-error: #ff5c5c;
+  --color-info: #00d1ff;
+
+  /* radius */
+  --radius-card: 16px;
+  --radius-button: 10px;
+  --radius-badge: 6px;
+
+  /* fonts (biến do next/font set ở layout) */
+  --font-body: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--color-app);
+  color: var(--color-primary);
+}
