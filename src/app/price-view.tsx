@@ -2,11 +2,18 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+interface GoldChange {
+  value: string;
+  percent: string;
+  dir: "up" | "down" | "none";
+}
 interface GoldRow {
   name: string;
   buy: string;
   sell: string;
   time: string;
+  buyChange?: GoldChange;
+  sellChange?: GoldChange;
 }
 interface GoldData {
   domestic: GoldRow[];
@@ -48,6 +55,19 @@ function fmt(ts: string | null): string {
   return new Date(ts).toLocaleString("vi-VN", { hour12: false });
 }
 
+function ChangeText({ c }: { c?: GoldChange }) {
+  if (!c || c.dir === "none") return null;
+  const up = c.dir === "up";
+  const val = c.value.replace(/^[+-]/, "");
+  const pct = c.percent.replace(/^[+-]/, "");
+  return (
+    <div className={(up ? "text-success" : "text-error") + " text-[11px] tabular-nums"}>
+      {up ? "▲" : "▼"} {val}
+      {pct ? ` (${pct})` : ""}
+    </div>
+  );
+}
+
 function PriceTable({ rows }: { rows: GoldRow[] }) {
   if (!rows.length) {
     return <p className="text-muted text-sm">Chưa có dữ liệu.</p>;
@@ -65,10 +85,16 @@ function PriceTable({ rows }: { rows: GoldRow[] }) {
         </thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={r.name} className="border-border-subtle/40 border-b last:border-0">
+            <tr key={r.name} className="border-border-subtle/40 border-b align-top last:border-0">
               <td className="text-primary py-2 pr-4 font-medium">{r.name}</td>
-              <td className="text-brand py-2 pr-4 text-right tabular-nums">{r.buy}</td>
-              <td className="text-brand-secondary py-2 pr-4 text-right tabular-nums">{r.sell}</td>
+              <td className="py-2 pr-4 text-right">
+                <div className="text-brand tabular-nums">{r.buy}</div>
+                <ChangeText c={r.buyChange} />
+              </td>
+              <td className="py-2 pr-4 text-right">
+                <div className="text-brand-secondary tabular-nums">{r.sell}</div>
+                <ChangeText c={r.sellChange} />
+              </td>
               <td className="text-muted py-2 text-right text-xs tabular-nums">{r.time}</td>
             </tr>
           ))}

@@ -1,10 +1,18 @@
 import * as cheerio from "cheerio";
 
+export interface GoldChange {
+  value: string; // mức thay đổi đã format, vd "-70,000"
+  percent: string; // vd "-0.51%"
+  dir: "up" | "down" | "none";
+}
+
 export interface GoldRow {
   name: string;
   buy: string;
   sell: string;
   time: string;
+  buyChange?: GoldChange;
+  sellChange?: GoldChange;
 }
 
 export interface GoldData {
@@ -29,6 +37,17 @@ const UA =
 // ---------------- Kim Phát: cào HTML tĩnh (server-render) ----------------
 // 2 x table.table; phân biệt bằng <thead th[scope=col]> đầu: "VÀNG TRONG NƯỚC" | "VÀNG THẾ GIỚI".
 // mỗi tr: th.column-type div:first = tên, div.time = thời điểm, 2 x td.column-price .price = mua/bán.
+// price-change của Kim Phát: <div class="price-change up|down"><span>-50,000 (-0.36%)</span></div>
+function buildKimPhatChange(className: string, spanText: string): GoldChange | undefined {
+  const dir = className.includes("down") ? "down" : className.includes("up") ? "up" : "none";
+  const txt = spanText.trim(); // "-50,000 (-0.36%)"
+  const m = txt.match(/^([+-]?[\d.,]+)\s*\(([^)]*)\)/);
+  const value = m?.[1] ?? txt;
+  const percent = m?.[2] ?? "";
+  if (dir === "none" || /^0[\d.,]*$/.test(value.replace(/^[+-]/, ""))) return undefined;
+  return { value, percent, dir };
+}
+
 function parseKimPhat(html: string): GoldData {
   const $ = cheerio.load(html);
   const data: GoldData = { domestic: [], world: [] };
@@ -42,10 +61,23 @@ function parseKimPhat(html: string): GoldData {
         const name = typeCell.find("div").first().text().trim();
         if (!name) return;
         const time = typeCell.find("div.time").text().trim();
-        const prices = $(tr).find("td.column-price .price");
-        const buy = $(prices.get(0)).text().trim();
-        const sell = $(prices.get(1)).text().trim();
-        bucket.push({ name, buy, sell, time });
+        const cells = $(tr).find("td.column-price");
+        const buyCell = cells.eq(0);
+        const sellCell = cells.eq(1);
+        const buyCh = buyCell.find(".price-change");
+        const sellCh = sellCell.find(".price-change");
+        bucket.push({
+          name,
+          buy: buyCell.find(".price").text().trim(),
+          sell: sellCell.find(".price").text().trim(),
+          time,
+          buyChange: buyCh.length
+            ? buildKimPhatChange(buyCh.attr("class") ?? "", buyCh.find("span").text())
+            : undefined,
+          sellChange: sellCh.length
+            ? buildKimPhatChange(sellCh.attr("class") ?? "", sellCh.find("span").text())
+            : undefined,
+        });
       });
   });
   return data;
@@ -68,6 +100,19 @@ interface MihongItem {
   buyingPrice: number;
   sellingPrice: number;
   dateTime: string;
+  buyChange?: number;
+  buyChangePercent?: number;
+  sellChange?: number;
+  sellChangePercent?: number;
+}
+
+function mihongChange(value?: number, percent?: number): GoldChange | undefined {
+  if (!value) return undefined; // 0 / undefined -> không thay đổi
+  return {
+    value: value.toLocaleString("en-US"),
+    percent: `${percent ?? 0}%`,
+    dir: value > 0 ? "up" : "down",
+  };
 }
 
 function mapMihong(items: MihongItem[]): GoldData {
@@ -77,6 +122,8 @@ function mapMihong(items: MihongItem[]): GoldData {
       buy: it.buyingPrice.toLocaleString("en-US"),
       sell: it.sellingPrice.toLocaleString("en-US"),
       time: it.dateTime,
+      buyChange: mihongChange(it.buyChange, it.buyChangePercent),
+      sellChange: mihongChange(it.sellChange, it.sellChangePercent),
     })),
     world: [],
   };

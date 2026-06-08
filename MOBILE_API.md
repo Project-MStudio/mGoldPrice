@@ -13,12 +13,21 @@ App đa tiệm vàng (multi-store). Hiện có 2 tiệm: `kimphat` (Kim Phát), 
 ## Kiểu dữ liệu chung
 
 ```ts
+// mức tăng/giảm của 1 giá so với trước
+interface GoldChange {
+  value: string;             // mức thay đổi đã format, vd "-70,000"
+  percent: string;           // vd "-0.51%"
+  dir: "up" | "down" | "none"; // up=tăng (xanh ▲), down=giảm (đỏ ▼)
+}
+
 // 1 dòng giá vàng
 interface GoldRow {
   name: string; // tên loại vàng, vd "NHẪN TRÒN 99.99", "SJC", "999"
   buy: string;  // giá MUA, chuỗi đã format dấu phẩy: "13,550,000". "0"/"-" = không có giá
   sell: string; // giá BÁN, tương tự
   time: string; // thời điểm từ nguồn, format "DD/MM/YYYY HH:mm" (giờ VN), KHÔNG phải ISO
+  buyChange?: GoldChange;  // tăng/giảm giá mua — CÓ THỂ THIẾU (không đổi) => ẩn
+  sellChange?: GoldChange; // tăng/giảm giá bán — CÓ THỂ THIẾU
 }
 
 interface GoldData {
@@ -26,6 +35,8 @@ interface GoldData {
   world: GoldRow[];    // vàng thế giới (có thể rỗng [] — vd Mi Hồng không có)
 }
 ```
+
+> **Hiển thị tăng/giảm:** mỗi giá có thể kèm `buyChange`/`sellChange`. `dir="up"` → mũi tên lên + **xanh**; `"down"` → mũi tên xuống + **đỏ**; thiếu field hoặc `"none"` → không đổi, ẩn đi. `value`/`percent` có sẵn dấu `-`; khi đã có mũi tên + màu thì nên **bỏ dấu** cho gọn (vd `▼ 70,000 (0.51%)`).
 
 > **Lưu ý parse số:** `buy`/`sell` là CHUỖI có dấu phẩy ngăn nghìn. Muốn ra số: bỏ dấu `,` rồi `parseInt`. Giá `"0"` hoặc `"-"` nghĩa là tiệm không niêm yết (hiển thị "—").
 >
@@ -63,7 +74,9 @@ Trả **mảng**, mỗi phần tử 1 tiệm. `?store=kimphat` để lọc còn 
       "updated_at": "2026-06-08T08:45:19.351Z",
       "data": {
         "domestic": [
-          { "name": "NHẪN TRÒN 99.99", "buy": "13,550,000", "sell": "13,850,000", "time": "08/06/2026 15:38" }
+          { "name": "NHẪN TRÒN 99.99", "buy": "13,550,000", "sell": "13,850,000", "time": "08/06/2026 15:38",
+            "buyChange": { "value": "-70,000", "percent": "-0.51%", "dir": "down" },
+            "sellChange": { "value": "-70,000", "percent": "-0.5%", "dir": "down" } }
         ],
         "world": [
           { "name": "USD/1 OUNCE", "buy": "1,922.10", "sell": "1,923.40", "time": "18/10/2023 03:03" }

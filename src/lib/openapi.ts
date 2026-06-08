@@ -31,6 +31,16 @@ export const openapiSpec = {
       },
     },
     schemas: {
+      GoldChange: {
+        type: "object",
+        description: "Mức tăng/giảm so với trước. dir: up=tăng, down=giảm, none=không đổi.",
+        properties: {
+          value: { type: "string", example: "-70,000" },
+          percent: { type: "string", example: "-0.51%" },
+          dir: { type: "string", enum: ["up", "down", "none"], example: "down" },
+        },
+        required: ["value", "percent", "dir"],
+      },
       GoldRow: {
         type: "object",
         properties: {
@@ -38,6 +48,8 @@ export const openapiSpec = {
           buy: { type: "string", example: "13,650,000" },
           sell: { type: "string", example: "13,950,000" },
           time: { type: "string", example: "08/06/2026 10:19" },
+          buyChange: { $ref: "#/components/schemas/GoldChange" },
+          sellChange: { $ref: "#/components/schemas/GoldChange" },
         },
         required: ["name", "buy", "sell", "time"],
       },
