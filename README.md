@@ -105,6 +105,7 @@ Xong. Cron duy nhất `/api/cron` (không `?store=`) **tự động cào store m
 
 1 trang dark-only: `src/app/page.tsx` (server component) + `src/app/price-view.tsx` (client). Bộ token màu khai báo CSS-first qua `@theme` trong `src/app/globals.css`.
 
-- **Mỗi lần load web tự cào + lưu DB** (giống cron): server component gọi `scrapeAndStore()` server-side mỗi request, rồi render data mới nhất → có data ngay cả khi chưa set cron. Logic dùng chung trong `src/lib/scrape.ts` (ghi) + `src/lib/queries.ts` (đọc), chia sẻ với cả 3 API route.
+- **Bộ lọc store**: chọn `Tất cả` / từng tiệm (Kim Phát, Mi Hồng...). "Tất cả" hiển thị giá từng tiệm + lịch sử gộp; history mỗi dòng có **nhãn store** để biết tiệm nào đổi. Danh sách store lấy từ `/api/stores` (server truyền xuống) nên thêm tiệm là tự có trong selector.
+- **Mỗi lần load web tự cào + lưu DB** (giống cron): server component gọi `scrapeAndStore()` cho tất cả store mỗi request, rồi render data mới nhất → có data ngay cả khi chưa set cron. Logic dùng chung trong `src/lib/scrape.ts` (ghi) + `src/lib/queries.ts` (đọc), chia sẻ với cả các API route.
 - Sau đó client auto-refresh `/api/price` + `/api/history` mỗi 30s (chỉ đọc, không cào).
 - Vì page tự cào, external cron là tuỳ chọn — hữu ích để cập nhật khi không ai mở web. Lưu ý: scrape mỗi page-load tăng tải lên trang nguồn; nếu traffic cao nên thêm guard staleness trong `page.tsx`.

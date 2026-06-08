@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 interface GoldRow {
   name: string;
@@ -12,7 +12,7 @@ interface GoldData {
   domestic: GoldRow[];
   world: GoldRow[];
 }
-interface PriceResponse {
+interface PricePayload {
   store_id: string;
   store_name: string;
   created_at: string | null;
@@ -21,15 +21,19 @@ interface PriceResponse {
 }
 interface HistoryItem {
   id: number;
+  store_id: string;
   created_at: string;
   updated_at: string;
   data: GoldData;
 }
-interface HistoryResponse {
-  history: HistoryItem[];
+interface StoreInfo {
+  store_id: string;
+  name: string;
+  website: string;
 }
 
 const REFRESH_MS = 30_000;
+const ALL = "all";
 
 function fmt(ts: string | null): string {
   if (!ts) return "—";
@@ -79,57 +83,123 @@ function Card({ title, children }: { title?: React.ReactNode; children: React.Re
   );
 }
 
-export default function PriceView({
-  initialPrice,
-  initialHistory,
+function StoreBadge({ name }: { name: string }) {
+  return (
+    <span className="bg-tonal text-tertiary rounded-badge border-border-subtle border px-2 py-0.5 text-xs font-medium">
+      {name}
+    </span>
+  );
+}
+
+function FilterButton({
+  active,
+  onClick,
+  children,
 }: {
-  initialPrice: PriceResponse | null;
-  initialHistory: HistoryItem[];
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
 }) {
-  const [price, setPrice] = useState<PriceResponse | null>(initialPrice);
-  // initialHistory là asc (cũ -> mới); hiển thị mới nhất lên đầu
-  const [history, setHistory] = useState<HistoryItem[]>([...initialHistory].reverse());
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        "rounded-button px-3 py-1.5 text-sm font-medium transition-colors " +
+        (active
+          ? "bg-brand text-app"
+          : "bg-tonal text-secondary hover:bg-highlight hover:text-primary")
+      }
+    >
+      {children}
+    </button>
+  );
+}
+
+export default function PriceView({ stores }: { stores: StoreInfo[] }) {
+  const [selected, setSelected] = useState<string>(ALL);
+  const [prices, setPrices] = useState<PricePayload[]>([]);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      const [pRes, hRes] = await Promise.all([
-        fetch("/api/price", { cache: "no-store" }),
-        fetch("/api/history", { cache: "no-store" }),
-      ]);
-      if (!pRes.ok || !hRes.ok) throw new Error("API error");
-      const p: PriceResponse = await pRes.json();
-      const h: HistoryResponse = await hRes.json();
-      setPrice(p);
-      setHistory([...h.history].reverse());
-      setError(null);
-      setLastSync(new Date().toLocaleTimeString("vi-VN", { hour12: false }));
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  }, []);
+  const nameOf = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const s of stores) m[s.store_id] = s.name;
+    return m;
+  }, [stores]);
+
+  const load = useCallback(
+    async (sel: string) => {
+      try {
+        const targets = sel === ALL ? stores.map((s) => s.store_id) : [sel];
+        if (targets.length === 0) {
+          setPrices([]);
+          setHistory([]);
+          return;
+        }
+        const [priceRes, histRes] = await Promise.all([
+          Promise.all(
+            targets.map((id) =>
+              fetch(`/api/price?store=${id}`, { cache: "no-store" }).then((r) => r.json()),
+            ),
+          ),
+          Promise.all(
+            targets.map((id) =>
+              fetch(`/api/history?store=${id}`, { cache: "no-store" }).then((r) => r.json()),
+            ),
+          ),
+        ]);
+        setPrices(priceRes as PricePayload[]);
+        const merged = (histRes as { history: HistoryItem[] }[])
+          .flatMap((h) => h.history)
+          // created_at là ISO -> so sánh chuỗi = đúng thứ tự thời gian; mới nhất lên đầu
+          .sort((a, b) => b.created_at.localeCompare(a.created_at));
+        setHistory(merged);
+        setError(null);
+        setLastSync(new Date().toLocaleTimeString("vi-VN", { hour12: false }));
+      } catch (e) {
+        setError((e as Error).message);
+      }
+    },
+    [stores],
+  );
 
   useEffect(() => {
-    const id = setInterval(load, REFRESH_MS);
+    load(selected);
+    const id = setInterval(() => load(selected), REFRESH_MS);
     return () => clearInterval(id);
-  }, [load]);
+  }, [load, selected]);
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-10">
-      <header className="mb-8 flex items-end justify-between gap-4">
+      <header className="mb-6 flex items-end justify-between gap-4">
         <div>
           <h1 className="font-display text-primary text-2xl font-bold">
             mPrice<span className="text-brand">Gold</span>
           </h1>
-          <p className="text-secondary mt-1 text-sm">
-            {price?.store_name ?? "Giá vàng"} · cập nhật {fmt(price?.updated_at ?? null)}
-          </p>
+          <p className="text-secondary mt-1 text-sm">Giá vàng các tiệm · cập nhật realtime</p>
         </div>
         <span className="bg-tonal text-muted rounded-badge px-2 py-1 text-xs">
           auto 30s{lastSync ? ` · ${lastSync}` : ""}
         </span>
       </header>
+
+      {/* Bộ lọc store */}
+      <div className="mb-6 flex flex-wrap gap-2">
+        <FilterButton active={selected === ALL} onClick={() => setSelected(ALL)}>
+          Tất cả
+        </FilterButton>
+        {stores.map((s) => (
+          <FilterButton
+            key={s.store_id}
+            active={selected === s.store_id}
+            onClick={() => setSelected(s.store_id)}
+          >
+            {s.name}
+          </FilterButton>
+        ))}
+      </div>
 
       {error ? (
         <div className="border-error/40 bg-error/10 text-error rounded-card mb-6 border px-4 py-3 text-sm">
@@ -138,22 +208,34 @@ export default function PriceView({
       ) : null}
 
       <div className="grid gap-5">
-        <Card title="Vàng trong nước">
-          <PriceTable rows={price?.data?.domestic ?? []} />
-        </Card>
+        {/* Giá hiện tại theo từng store đang chọn */}
+        {prices.map((p) => (
+          <Card key={p.store_id} title={`${p.store_name} · cập nhật ${fmt(p.updated_at)}`}>
+            <div className="text-muted mb-1 text-xs tracking-wide uppercase">Trong nước</div>
+            <PriceTable rows={p.data?.domestic ?? []} />
+            {p.data?.world?.length ? (
+              <>
+                <div className="text-muted mt-4 mb-1 text-xs tracking-wide uppercase">
+                  Thế giới
+                </div>
+                <PriceTable rows={p.data.world} />
+              </>
+            ) : null}
+          </Card>
+        ))}
 
-        <Card title="Vàng thế giới">
-          <PriceTable rows={price?.data?.world ?? []} />
-        </Card>
-
+        {/* Lịch sử thay đổi (gộp các store đang chọn, có nhãn store) */}
         <Card title={`Lịch sử thay đổi (${history.length})`}>
           {history.length === 0 ? (
             <p className="text-muted text-sm">Chưa có lịch sử.</p>
           ) : (
             <ul className="divide-border-subtle/40 divide-y">
               {history.map((h) => (
-                <li key={h.id} className="py-3 first:pt-0 last:pb-0">
-                  <div className="text-secondary mb-2 text-xs tabular-nums">{fmt(h.created_at)}</div>
+                <li key={`${h.store_id}-${h.id}`} className="py-3 first:pt-0 last:pb-0">
+                  <div className="mb-2 flex items-center gap-2">
+                    <StoreBadge name={nameOf[h.store_id] ?? h.store_id} />
+                    <span className="text-secondary text-xs tabular-nums">{fmt(h.created_at)}</span>
+                  </div>
                   <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm">
                     {h.data.domestic.map((r) => (
                       <span key={r.name} className="text-muted">
