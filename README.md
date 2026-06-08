@@ -45,18 +45,21 @@ Round-trip test: `npm test`.
 
 CORS mở (`*`) cho mobile. Tất cả route `runtime=nodejs`, `dynamic=force-dynamic`.
 
-## External cron 30s (KHÔNG dùng Vercel Cron)
+## External cron 5 phút (KHÔNG dùng Vercel Cron)
 
-`/api/cron` chỉ là route — gọi bằng dịch vụ cron ngoài (cron-job.org, EasyCron, GitHub Actions, server riêng...), 30s/lần, kèm header `x-cron-secret`:
+> Vì sao không dùng Vercel Cron: free tier (Hobby) chỉ cho cron **1 lần/ngày** — biểu thức chạy dày hơn (vd `*/5 * * * *`) sẽ **deploy fail**. 5 phút/lần cần Vercel Pro. Nên dùng external cron (miễn phí, tần suất tuỳ ý).
+
+`/api/cron` chỉ là route — gọi bằng dịch vụ cron ngoài (cron-job.org, EasyCron, GitHub Actions, server riêng...), 5 phút/lần, kèm header `x-cron-secret`:
 
 ```bash
-# chạy mỗi 30s từ máy/dịch vụ ngoài
+# chạy mỗi 5 phút từ máy/dịch vụ ngoài
 curl -s "https://<app>.vercel.app/api/cron?store=kimphat" \
   -H "x-cron-secret: $CRON_SECRET"
 ```
 
 - Sai/thiếu secret → `401`.
-- cron-job.org: tạo job URL `https://<app>.vercel.app/api/cron?store=kimphat`, interval 30s, thêm custom header `x-cron-secret: <CRON_SECRET>`. Mỗi store chạy 1 job riêng (đổi `?store=`).
+- **cron-job.org** (free): tạo job URL `https://<app>.vercel.app/api/cron?store=kimphat`, **Schedule: Every 5 minutes** (hoặc cron `*/5 * * * *`), thêm custom header `x-cron-secret: <CRON_SECRET>`. Mỗi store chạy 1 job riêng (đổi `?store=`).
+- Route cũng chấp nhận `Authorization: Bearer <CRON_SECRET>` — tương thích sẵn nếu sau này đổi sang Vercel Cron (Pro).
 
 ## Thêm tiệm mới (không đổi core code)
 
