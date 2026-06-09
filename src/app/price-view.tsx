@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import PriceChart from "./price-chart";
 
 interface GoldChange {
   value: string;
   percent: string;
   dir: "up" | "down" | "none";
 }
-interface GoldRow {
+export interface GoldRow {
   name: string;
   buy: string;
   sell: string;
@@ -15,7 +16,7 @@ interface GoldRow {
   buyChange?: GoldChange;
   sellChange?: GoldChange;
 }
-interface GoldData {
+export interface GoldData {
   domestic: GoldRow[];
   world: GoldRow[];
 }
@@ -33,7 +34,7 @@ interface StoreHistory {
   store_name: string;
   history: { id: number; created_at: string; updated_at: string; data: GoldData }[];
 }
-interface HistoryRow {
+export interface HistoryRow {
   id: number;
   store: string;
   store_name: string;
@@ -221,7 +222,7 @@ export default function PriceView({
             {loading ? "Đang tải…" : "Tải lại"}
           </button>
           <span className="bg-tonal text-muted rounded-badge px-2 py-1 text-xs">
-            auto 30s{lastSync ? ` · ${lastSync}` : ""}
+            {lastSync ? ` · ${lastSync}` : ""}
           </span>
         </div>
       </header>
@@ -264,6 +265,9 @@ export default function PriceView({
             ) : null}
           </Card>
         ))}
+
+        {/* Biểu đồ biến động giá theo giờ (SVG thuần, đọc từ history client-side) */}
+        <PriceChart history={history} />
 
         {/* Lịch sử thay đổi (gộp các store đang chọn, có nhãn store) */}
         <Card title={`Lịch sử thay đổi (${history.length})`}>
