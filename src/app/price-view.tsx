@@ -164,8 +164,12 @@ export default function PriceView({
   const [history, setHistory] = useState<HistoryRow[]>(initialHistory);
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
+  // Gọi /api/price (đồng thời trigger cào nền có cooldown ở server) + /api/history rồi cập nhật UI.
+  // Dùng cho: mount (reload trang), auto-poll 30s, và nút "Tải lại" thủ công.
   const load = useCallback(async (sel: string) => {
+    setLoading(true);
     try {
       const q = sel === ALL ? "" : `?store=${sel}`;
       const [priceRes, histRes] = await Promise.all([
@@ -184,6 +188,8 @@ export default function PriceView({
       setLastSync(new Date().toLocaleTimeString("vi-VN", { hour12: false }));
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -202,9 +208,22 @@ export default function PriceView({
           </h1>
           <p className="text-secondary mt-1 text-sm">Giá vàng các tiệm · cập nhật realtime</p>
         </div>
-        <span className="bg-tonal text-muted rounded-badge px-2 py-1 text-xs">
-          auto 30s{lastSync ? ` · ${lastSync}` : ""}
-        </span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => load(selected)}
+            disabled={loading}
+            title="Tải lại + cào dữ liệu ngay (server có cooldown ~60s)"
+            aria-label="Tải lại dữ liệu"
+            className="rounded-button bg-tonal text-secondary hover:bg-highlight hover:text-primary flex items-center gap-1 px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50"
+          >
+            <span className={loading ? "inline-block animate-spin" : "inline-block"}>↻</span>
+            {loading ? "Đang tải…" : "Tải lại"}
+          </button>
+          <span className="bg-tonal text-muted rounded-badge px-2 py-1 text-xs">
+            auto 30s{lastSync ? ` · ${lastSync}` : ""}
+          </span>
+        </div>
       </header>
 
       {/* Bộ lọc store */}
