@@ -4,6 +4,7 @@
 > Full bootstrap copy (sync with §0): `{RULES}/example/HYDRA_BOOT_BLOCK.md`.
 > After Step 0, on conflict: prefer Hydra agent + `{RULES}/rules/*.mdc` for process; root `AGENTS.md` supplements app context.
 > ⚠️ This repo is **Next.js server-side/serverless** — NOT React-Native/Flutter. Hydra Routing Table is mobile-leaning; only use fitting agents (analyst-task, implementation, debugger-agent, code-review, api-contract, system-architecture, unittest, security-auditor, technical-writer).
+> Language: user writes Vietnamese → reason/process **in English**, emit final **output in Vietnamese**.
 > Last updated: 2026-06-09
 
 ---

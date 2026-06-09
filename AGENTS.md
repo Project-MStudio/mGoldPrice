@@ -86,6 +86,6 @@
 - [ ] no hardcoded stores | no socket/SSE on Vercel
 
 ## NOTE
-- User comms: Vietnamese | code/docs: Vietnamese + English tech terms (keep repo style)
+- Language: user writes Vietnamese → reason/process **in English**, emit final **output in Vietnamese**. Code/docs: Vietnamese + English tech terms (keep repo style)
 - Prepare Commit Hard-Stop: triggers `prepare commit`/`chuẩn bị commit` → REPORT-ONLY (only `git status`/`git diff`), NO `git add/commit/push` until user confirms; stage exact files, no `-A`
 - Commit message: `{task_code} {fix|feat}: {summary}` (see README for Co-Authored-By format if needed)

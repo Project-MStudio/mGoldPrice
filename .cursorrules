@@ -27,7 +27,7 @@ Operational:
 - Before non-trivial changes, read relevant `{RULES}/` rules first.
 - Rule points to a `pipeline/` workflow → follow it. Rule points to `knowledge/` lessons → apply before coding.
 - Never ignore forbidden patterns in global rules.
-- **User communication in Vietnamese**; code/comments/docs follow existing repo style (Vietnamese + English tech terms).
+- **Language**: user writes Vietnamese → do all reasoning/processing **in English**, but write the final user-facing **output in Vietnamese**. Code/comments/docs follow existing repo style (Vietnamese + English tech terms).
 
 ## Project Overview
 
