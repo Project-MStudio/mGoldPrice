@@ -11,6 +11,7 @@ export function OPTIONS() {
 }
 
 // GET /api/price/{store} -> 1 object { store, store_name, price } cho đúng store đó.
+// CHỈ ĐỌC (không cào). Việc cào do /api/cron (định kỳ) + /api/price (poll, cào tất cả) lo.
 export async function GET(_req: Request, { params }: { params: Promise<{ store: string }> }) {
   const { store } = await params;
   if (!getStore(store)) {

@@ -52,7 +52,42 @@ CORS mở (`*`) cho mobile. Tất cả route `runtime=nodejs`, `dynamic=force-dy
 
 - GET (`getStores`/`getPrices`/`getHistories` trong `src/lib/queries.ts`) đọc **cache trước**, miss mới query DB rồi set cache (TTL 600s). Ghi DB (`scrapeAndStore`) **invalidate** key liên quan (`price:<store>`, `price:all`, `history:<store>`, `history:all`) → GET kế tiếp lấy data mới.
 - Cache qua **Upstash Redis REST** (`@upstash/redis`, hợp serverless). Set 2 env `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`. **Thiếu env → cache tự tắt**, API đọc thẳng DB (không vỡ). Lỗi Redis cũng nuốt, không chặn request.
-- **Trang chủ SSR**: server đọc data (cache/DB) render sẵn vào HTML rồi mới giao client (không còn cảnh render UI xong mới call API). Trang **không scrape khi load** nữa — cào do cron lo → trang nhẹ & nhanh.
+- **Trang chủ SSR**: server đọc data (cache/DB) render sẵn vào HTML rồi mới giao client (không còn cảnh render UI xong mới call API). Trang **không scrape trực tiếp trong page load** — việc cào do cron và `/api/price` background refresh xử lý.
+
+### Hai flow làm tươi data (KHÔNG có socket/realtime)
+
+App **không** dùng socket/MQTT/SSE (Vercel serverless không giữ kết nối thường trực được —
+function chết sau mỗi request, SSE giữ-connection vừa rớt mỗi ~60s vừa đốt quota theo số user).
+Thay vào đó data được làm tươi bằng **2 flow song song**:
+
+1. **Cron định kỳ (nền, lúc app chưa mở)** — external cron gọi `/api/cron` mỗi **15 phút**
+   (cron-job.org). Cào sẵn vào DB nên khi user mở app là đã có data mới nhất. Đây là nguồn
+   freshness chính, chạy bất kể có traffic đọc hay không.
+2. **Poll on-call (khi app đang mở)** — app poll `GET /api/price` mỗi 30–60s. Mỗi lần poll: route
+   trả data cache/DB **ngay**, đồng thời cào nền **TẤT CẢ tiệm** (cùng service `scrapeAllStores()`
+   như cron) để đẩy data mới sớm hơn chu kỳ cron khi có người đang dùng. `GET /api/price/{store}`
+   **chỉ đọc, không cào**.
+
+> **Nguồn cào duy nhất:** logic "cào tất cả" chỉ nằm ở `scrapeAllStores()` (`src/lib/scrape.ts`);
+> cả cron lẫn `/api/price` đều gọi nó. **Thêm tiệm chỉ sửa `src/lib/stores.ts` + seed DB.** Chi
+> tiết kiến trúc & rule cho agent/dev mới: xem **`PROJECT_CONTEXT.md`**.
+
+Logic cào (`scrapeAndStore`) dùng chung: cào → encode → so với row mới nhất cùng store —
+**khác thì INSERT row mới**, **giống thì UPDATE** (refresh `updated_at`).
+
+### `/api/price` background refresh (flow 2) — `src/lib/refresh.ts`
+
+Hai điểm bắt buộc của serverless (đọc comment đầu `src/lib/refresh.ts` để hiểu vì sao):
+
+- **Chạy qua `after()` (next/server), KHÔNG fire-and-forget.** Route trả response trước, `after()`
+  giữ function sống để cào nốt — không block client, và không bị Vercel freeze giữa chừng như cách
+  cũ (gọi hàm async mà không await → `return` là instance đông cứng, cào dở dang).
+- **Cooldown GLOBAL bằng Redis (`cacheLock` = `SET NX EX`), KHÔNG để biến RAM.** Mỗi serverless
+  instance có RAM riêng nên cooldown process-local vô dụng khi đông client (nhiều instance cùng
+  cào đè nhau). Redis lock đảm bảo trong cửa sổ cooldown chỉ **đúng 1 lần cào** cho mỗi scope, dù
+  bao nhiêu client/instance. Lock tách bucket `all` vs từng `store-id`.
+- Cooldown mặc định `60s`, đổi qua env `PRICE_REFRESH_COOLDOWN_MS` (ms; `=0` để tắt). Thiếu env
+  Redis → cào best-effort không cooldown (chỉ ảnh hưởng dev/local; production luôn có Upstash).
 
 ### Swagger / OpenAPI (chỉ doc API)
 
@@ -63,20 +98,20 @@ CORS mở (`*`) cho mobile. Tất cả route `runtime=nodejs`, `dynamic=force-dy
 
 Zero-dependency: spec viết tay ở `src/lib/openapi.ts`, không cài thêm package. Bật `/api/cron` trong "Try it out" cần điền `x-cron-secret` (nút **Authorize**). Production: `https://m-gold-price.vercel.app/api/docs`.
 
-## External cron 5 phút (KHÔNG dùng Vercel Cron)
+## External cron 15 phút (KHÔNG dùng Vercel Cron)
 
-> Vì sao không dùng Vercel Cron: free tier (Hobby) chỉ cho cron **1 lần/ngày** — biểu thức chạy dày hơn (vd `*/5 * * * *`) sẽ **deploy fail**. 5 phút/lần cần Vercel Pro. Nên dùng external cron (miễn phí, tần suất tuỳ ý).
+> Vì sao không dùng Vercel Cron: free tier (Hobby) chỉ cho cron **1 lần/ngày** — biểu thức chạy dày hơn (vd `*/15 * * * *`) sẽ **deploy fail**. Tần suất dày cần Vercel Pro. Nên dùng external cron (miễn phí, tần suất tuỳ ý).
 
 **CHỈ CẦN 1 cron duy nhất** gọi `/api/cron` (KHÔNG kèm `?store=`) — route tự loop tất cả store trong bảng store và cào từng cái. Thêm tiệm mới về sau **không phải tạo cron mới**.
 
 ```bash
-# chạy mỗi 5 phút từ máy/dịch vụ ngoài — cào HẾT mọi store
+# chạy mỗi 15 phút từ máy/dịch vụ ngoài — cào HẾT mọi store
 curl -s "https://<app>.vercel.app/api/cron" \
   -H "x-cron-secret: $CRON_SECRET"
 ```
 
 - Sai/thiếu secret → `401`.
-- **cron-job.org** (free): tạo **1 job** URL `https://<app>.vercel.app/api/cron` (không `?store=`), **Schedule: Every 5 minutes** (hoặc cron `*/5 * * * *`), thêm custom header `x-cron-secret: <CRON_SECRET>`.
+- **cron-job.org** (free): tạo **1 job** URL `https://<app>.vercel.app/api/cron` (không `?store=`), **Schedule: Every 15 minutes** (hoặc cron `*/15 * * * *`), thêm custom header `x-cron-secret: <CRON_SECRET>`.
 - Mỗi store cào độc lập: 1 store lỗi → phần tử `{ store_id, error }` trong `results`, không ảnh hưởng store khác.
 - Muốn cào thủ công 1 store: thêm `?store=<id>`.
 - Route cũng chấp nhận `Authorization: Bearer <CRON_SECRET>` — tương thích sẵn nếu sau này đổi sang Vercel Cron (Pro).
@@ -115,5 +150,5 @@ Xong. Cron duy nhất `/api/cron` (không `?store=`) **tự động cào store m
 
 - **Bộ lọc store**: chọn `Tất cả` / từng tiệm (Kim Phát, Mi Hồng...). "Tất cả" hiển thị giá từng tiệm + lịch sử gộp; history mỗi dòng có **nhãn store** để biết tiệm nào đổi. Danh sách store lấy từ `/api/stores` (server truyền xuống) nên thêm tiệm là tự có trong selector.
 - **SSR**: server component (`page.tsx`) đọc sẵn `getStores`/`getPrices`/`getHistories` (qua cache/DB) và render thẳng vào HTML → có data ngay từ first paint. Logic đọc dùng chung trong `src/lib/queries.ts`.
-- Sau đó client auto-refresh `/api/price` + `/api/history` mỗi 30s (chỉ đọc, đã có cache).
-- Trang **không scrape khi load** — việc cào do cron `/api/cron` (5 phút) lo, nên trang nhẹ & nhanh.
+- Sau đó client auto-refresh `/api/price` + `/api/history` mỗi 30s (đọc cache/DB; gọi `/api/price` sẽ kích hoạt refresh nền có cooldown).
+- Trang **không scrape khi load** — việc cào do cron `/api/cron` (15 phút) lo, nên trang nhẹ & nhanh.

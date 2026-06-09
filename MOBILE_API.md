@@ -160,9 +160,10 @@ vd `GET /api/history/kimphat`. Trả **1 object** `{ store, store_name, history 
 ## Ghi chú cho mobile
 
 - **Không auth, CORS mở** — gọi thẳng từ app.
-- **Auto refresh:** giá cập nhật ~mỗi 5 phút (server cron). App nên poll **mỗi 30–60s** màn hình giá hiện tại (`/api/price`).
+- **Auto refresh:** app nên poll **mỗi 30–60s** màn hình giá hiện tại (`/api/price`). Endpoint này trả cache/DB ngay và đồng thời trigger refresh nền (có cooldown phía server), nên dữ liệu thường lên sớm hơn chu kỳ cron.
 - **Đa tiệm:** lấy `/api/stores` → render filter (gợi ý: "Tất cả" + từng tiệm). "Tất cả" gọi `/api/price` & `/api/history` (mảng); chọn 1 tiệm gọi bản `/{store}` (object) hoặc `?store=`.
 - **history:** mỗi item = 1 lần đổi giá; `created_at` = lúc snapshot xuất hiện, `updated_at` = lần cuối server xác nhận. Khi gộp nhiều tiệm để hiện timeline, sort theo `created_at` giảm dần và gắn nhãn `store_name`.
+- **Phát hiện log mới:** lưu `price.updated_at` (hoặc `history[history.length-1].id`) lần trước; nếu khác ở lần poll sau thì hiển thị badge/log mới.
 - **Field có thể rỗng/N/A:** `world` có thể `[]`; `buy`/`sell` có thể `"0"`/`"-"`.
 - **404 shape:** `{ "error": "Unknown store" }` khi `{store}` không tồn tại.
 - Có thể import thẳng `openapi.json` vào Postman/Swagger để sinh client.

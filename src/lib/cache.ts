@@ -44,6 +44,22 @@ export async function cacheDel(...keys: string[]): Promise<void> {
   }
 }
 
+// Lock/cooldown PHÂN TÁN (global cho mọi serverless instance), không phải biến RAM.
+// `SET key 1 NX EX ttl`: chỉ MỘT caller set được trong cửa sổ `ttl` giây -> trả true cho caller đó,
+// false cho mọi caller khác cho tới khi key hết hạn. Dùng làm cooldown cào (chống thundering herd
+// khi nhiều client poll cùng lúc -> nhiều instance cùng tính giờ trên RAM riêng -> cào đè nhau).
+//   - Không có Redis (dev/local thiếu env) -> trả true (best-effort, cho cào) để không kẹt.
+//   - Lỗi Redis -> trả false (an toàn: thà bỏ 1 nhịp cào on-call còn hơn hammer; cron vẫn lo nền).
+export async function cacheLock(key: string, ttlSeconds: number): Promise<boolean> {
+  const c = getClient();
+  if (!c) return true;
+  try {
+    return (await c.set(key, "1", { nx: true, ex: ttlSeconds })) === "OK";
+  } catch {
+    return false;
+  }
+}
+
 // Helpers tên key thống nhất giữa nơi đọc (queries) và nơi invalidate (scrape).
 export const cacheKeys = {
   stores: "stores",

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { getStore } from "@/lib/stores";
-import { getStores } from "@/lib/queries";
-import { scrapeAndStore } from "@/lib/scrape";
+import { scrapeAndStore, scrapeAllStores } from "@/lib/scrape";
 import { corsHeaders } from "@/lib/cors";
 
 export const runtime = "nodejs";
@@ -43,22 +42,7 @@ export async function GET(req: Request) {
     }
   }
 
-  // --- Không có ?store= : cào TẤT CẢ store trong bảng store (mặc định cho cron định kỳ) ---
-  const stores = await getStores();
-  const results = await Promise.all(
-    stores.map(async (s) => {
-      const cfg = getStore(s.store_id);
-      if (!cfg) {
-        // store có trong DB nhưng chưa đăng ký fetcher trong src/lib/stores.ts
-        return { store_id: s.store_id, skipped: "no fetcher registered" };
-      }
-      try {
-        return await scrapeAndStore(cfg);
-      } catch (err) {
-        return { store_id: s.store_id, error: (err as Error).message };
-      }
-    }),
-  );
-
+  // --- Không có ?store= : cào TẤT CẢ store qua SERVICE CÀO DUY NHẤT (dùng chung với /api/price) ---
+  const results = await scrapeAllStores();
   return NextResponse.json({ count: results.length, results }, { headers: corsHeaders() });
 }
