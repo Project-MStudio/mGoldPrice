@@ -1,0 +1,38 @@
+[HYDRA BOOTSTRAP LOG] mPriceGold — manual fill (Next.js, KHÔNG dùng SDK auto-enrich)
+note=Hydra example/ ship React-Native/Flutter defaults; các surface file dưới đây được ĐIỀN TAY theo source Next.js thật.
+hydra_root={RULES}=.cursor (Layout A — Hydra clone thẳng vào .cursor, chuẩn M-Studio; nguồn ssh git@gitlab.com:m-studio-team/global-rule-cursor.git)
+
+[DISCOVERY]
+framework=Next.js 16 (App Router)
+language=TypeScript
+package_manager=npm
+runtime=nodejs (Vercel serverless, region sin1)
+entry_points=src/app/api/**/route.ts (8 routes) + src/app/page.tsx (SSR)
+main_modules=src/lib/{scrape,stores,queries,cache,refresh,encode,cors,openapi}.ts + src/lib/db/{schema,seed,index}.ts
+
+[STRUCTURE_SCAN]
+detected_layers=route handlers (mỏng) -> service src/lib/* -> Drizzle/Neon + Upstash cache
+state_management=server-side (Postgres + Redis cache); KHÔNG client global state
+api_layer=Next.js route handlers, CORS mở, đọc không auth; /api/cron bảo vệ CRON_SECRET
+db=Neon serverless Postgres + Drizzle ORM (bảng store, price_history)
+cache=Upstash Redis REST (cacheGet/Set/Del + cacheLock cooldown)
+scraping=cheerio (HTML) / fetch API JSON; nguồn cào duy nhất=scrapeAllStores()
+background=after() (next/server) + Redis cooldown lock
+realtime=NONE (poll 30-60s app + external cron 15p); không socket/SSE trên Vercel
+testing=node:test (npm test) — encode round-trip
+i18n=N/A
+
+[TEMPLATE_FILL_STATUS]
+.cursorrules=DONE (filled cho Next.js)
+AGENTS.md=DONE (root override, app context Next.js)
+CLAUDE.md=DONE (gồm §0 Hydra boot)
+PROJECT_CONTEXT.md=DONE (12-mục, nội dung Next.js)
+logs.txt=DONE (file này)
+
+[RN_DEFAULTS_NOT_APPLICABLE]
+- Redux/Saga/Zustand, React Navigation/Screens.ts, i18n lang/, native iOS/Android, FlatList/StyleSheet, MMKV — KHÔNG áp dụng (đây là backend Next.js).
+
+[NEXT_ACTIONS]
+1=Nếu muốn auto-enrich bằng SDK: cd .cursor && npm install && npm run setup (cần CURSOR_API_KEY) — nhưng sẽ ghi đè bản tay này bằng default mobile, KHÔNG khuyến nghị.
+2=Commit nội dung .cursor + 5 surface file khi user xác nhận.
+3=Khi thêm tiệm/đổi API: cập nhật PROJECT_CONTEXT.md mục 4 + MOBILE_API.md.

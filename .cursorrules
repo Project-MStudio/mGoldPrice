@@ -1,0 +1,115 @@
+# mPriceGold (mGoldPrice)
+
+## Hydra — ưu tiên tuyệt đối
+
+**`{RULES}`** = `.cursor` (Layout A — Hydra clone thẳng vào `.cursor`, theo chuẩn M-Studio trong README Hydra).
+
+Trước mọi thay đổi code hoặc trả lời kỹ thuật:
+
+1. Đọc `{RULES}/example/HYDRA_BOOT_BLOCK.md` và thực hiện **Bước 0** (MANIFESTO, `rules/base_rule.mdc`, Routing Table, file agent, `skill-personal-rules.md`).
+2. Mọi task phải **đi qua** agent Hydra tương ứng (đọc file `.md` trong `{RULES}/departments/**`). Không bịa agent.
+3. Không có agent phù hợp → dùng khả năng model + in **HYDRA GAP** ở cuối response (mẫu trong `HYDRA_BOOT_BLOCK.md`).
+
+> ⚠️ **Đây là dự án Next.js server-side/serverless, KHÔNG phải React-Native/Flutter.** Routing Table của Hydra thiên về mobile — bỏ qua các agent native/redux/navigation/i18n không liên quan. Dùng `analyst-task`, `implementation`, `debugger-agent`, `code-review`, `api-contract`, `system-architecture`, `unittest`, `security-auditor`, `technical-writer` khi phù hợp. Context kiến trúc thật của repo nằm ở `PROJECT_CONTEXT.md` + `AGENTS.md` + `CLAUDE.md` ở root.
+
+## Cursor Rule Loading (Global Rule Cursor)
+
+Khi làm việc trong repo này, luôn nạp & áp dụng rule từ `{RULES}` = `.cursor`:
+
+1. `{RULES}/rules/` (mọi `.mdc` và file rule)
+2. `{RULES}/pipeline/` (workflow/runbook)
+3. `{RULES}/departments/` (agent chuyên môn)
+4. `{RULES}/knowledge/` (lessons & memory)
+
+Priority **sau** Bước 0 của Hydra:
+
+- `{RULES}/rules/`
+- `AGENTS.md` (root) — app architecture context
+- `.cursorrules`
+- `CLAUDE.md`, `PROJECT_CONTEXT.md`
+
+Yêu cầu vận hành:
+
+- Trước thay đổi non-trivial, đọc rule liên quan ở `{RULES}/` trước.
+- Rule trỏ workflow ở `pipeline/` → theo workflow đó. Rule trỏ lessons ở `knowledge/` → áp dụng trước khi code.
+- Không bỏ qua forbidden pattern trong global rules.
+- Giao tiếp với user bằng **tiếng Việt**; code/comment/docs bằng **tiếng Việt + thuật ngữ tiếng Anh** (giữ nguyên style hiện có của repo).
+
+## Project Overview
+
+mPriceGold cào giá vàng từ web các tiệm → parse → lưu Neon Postgres (chuỗi encode) → phục vụ Web SSR (dark-mode) + API JSON (CORS mở, không auth) cho app Flutter. Multi-store: thêm tiệm không đổi schema.
+
+## Tech Stack
+- **Framework**: Next.js 16 (App Router) + TypeScript
+- **DB / ORM**: Neon serverless Postgres + Drizzle ORM
+- **Cache / Lock**: Upstash Redis (REST) — cache đọc + cooldown lock cào
+- **Scraping**: cheerio (HTML tĩnh) hoặc fetch API JSON tuỳ tiệm
+- **Styling**: Tailwind v4 (CSS-first `@theme`), dark-only
+- **Real-time**: KHÔNG (poll 30–60s + cron 15p; không socket/SSE — xem PROJECT_CONTEXT mục 9)
+- **Deploy**: Vercel free (Hobby), region `sin1`; external cron (cron-job.org)
+
+## Project Structure
+- `src/app/`: App Router (pages + API)
+  - `src/app/api/**/route.ts`: API handlers (stores/price/history/cron/docs/openapi.json)
+  - `src/app/page.tsx` + `price-view.tsx`: Web SSR + client poll
+  - `src/app/globals.css`: Tailwind theme
+- `src/lib/`: domain/service layer
+  - `scrape.ts`: **nguồn cào duy nhất** (`scrapeAndStore`, `scrapeAllStores`)
+  - `stores.ts`: registry tiệm `STORES` + parser
+  - `queries.ts`: đọc data cache-first
+  - `cache.ts`: Upstash cache + `cacheLock`
+  - `refresh.ts`: cào nền có cooldown (`triggerBackgroundRefresh`)
+  - `encode.ts`: encode/decode canonical base64
+  - `db/`: schema, seed, connection (Drizzle + Neon)
+  - `cors.ts`, `openapi.ts`
+
+## Main Features
+- Cào giá định kỳ (cron) + on-call (app poll), lưu lịch sử thay đổi.
+- API JSON cho mobile: giá hiện tại, lịch sử, danh sách tiệm.
+- Web SSR hiển thị giá + lịch sử, lọc theo tiệm.
+- Swagger/OpenAPI tự mô tả API.
+
+# Code Rules
+
+## TypeScript
+- Tránh `any`; tạo type cần thiết. Ưu tiên interface/type cho cấu trúc data.
+- Type chuẩn hiện có: `GoldData`/`StoreConfig` (`@/lib/stores`), `ScrapeResult`/`ScrapeAllItem` (`@/lib/scrape`), `PriceEntry`/`StoreHistory` (`@/lib/queries`).
+
+## Next.js / Server
+- Route handler giữ **mỏng**: parse request → gọi service `src/lib/` → trả JSON. Không nhúng logic cào/đọc vào route.
+- Mọi route: `export const runtime = "nodejs"`, `dynamic = "force-dynamic"`, có `OPTIONS`, trả `corsHeaders()`.
+- Việc nền (cào) **luôn qua `after()` (next/server)** — KHÔNG fire-and-forget.
+
+## Scrape / Data (CỐT LÕI)
+- **Cào hết = luôn gọi `scrapeAllStores()`**. Không viết loop cào mới ở bất kỳ đâu.
+- Thêm tiệm = CHỈ sửa `src/lib/stores.ts` (`STORES`) + seed `src/lib/db/seed.ts`. Không đụng route/cron/refresh.
+- Thêm cào vào API khác = import & gọi service 1 dòng (`triggerBackgroundRefresh()` qua `after()` cho route bị poll; `scrapeAllStores()` cho cron-like).
+- Đọc data luôn qua `queries.ts` (cache-first); ghi DB luôn qua `scrapeAndStore` (để invalidate cache đúng).
+- Cooldown/lock = Redis (`cacheLock`), KHÔNG biến module-level.
+- Không đổi logic so khớp insert/update mà chưa cập nhật `encode.ts` + doc.
+
+## API contract (mobile)
+- Không đổi shape JSON đang phục vụ mobile mà chưa cập nhật `MOBILE_API.md` + `src/lib/openapi.ts`.
+- `buy/sell` là chuỗi có dấu phẩy; `"0"`/`"-"` = không niêm yết.
+
+## Error Handling
+- try-catch mọi async cào; cào nền nuốt lỗi + `console.error` (không phá request).
+- Lỗi Redis/cache phải nuốt, đọc thẳng DB, không vỡ API.
+
+## Testing
+- `npm test` (node test runner) — hiện cover encode round-trip.
+- Verify trước khi xong: `npx tsc --noEmit` + `npm test`.
+
+## Commands
+- Dev: `npm run dev`
+- Check: `npx tsc --noEmit`, `npm test`
+- DB: `npm run db:migrate`, `npm run db:seed` (GHI DB THẬT)
+
+## Git & Agent Flow (STRICT)
+
+### Prepare Commit Hard-Stop
+- Trigger: `prepare commit`, `chuẩn bị commit`.
+- Vào **REPORT-ONLY MODE**: chỉ chạy git read-only (`git status`, `git diff`); KHÔNG `git add/commit/push`.
+- Report phải có: `Các file cần QC chú ý` (mỗi file: `Đổi gì` + `QC check gì`) + `File thay đổi nhưng không cần ưu tiên test` + `API/flow ảnh hưởng`.
+- Chỉ commit sau khi user xác nhận rõ ("commit đi", "ok commit"). KHÔNG `git add -A`; stage đúng file.
+- Commit message format: `{task_code} {fix|feat}: {tóm tắt}`.

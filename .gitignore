@@ -11,3 +11,6 @@ next-env.d.ts
 .env*.local
 
 .DS_Store
+
+# Hydra agent system (clone riêng vào .cursor, không track)
+.cursor/
