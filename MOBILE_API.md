@@ -8,6 +8,19 @@ Tài liệu để team mobile build/update giao diện. Toàn bộ là **GET, kh
 
 App đa tiệm vàng (multi-store). Hiện có 2 tiệm: `kimphat` (Kim Phát), `mihong` (Mi Hồng). Sẽ thêm tiệm khác sau — **đừng hardcode danh sách tiệm, luôn lấy từ `/api/stores`**.
 
+### Danh sách endpoint
+
+| # | Endpoint | Mô tả |
+|---|----------|-------|
+| 1 | `GET /api/stores` | Danh sách tiệm |
+| 2 | `GET /api/price` | Giá hiện tại tất cả tiệm (mảng). `?store=` lọc |
+| 3 | `GET /api/price/{store}` | Giá hiện tại 1 tiệm (object) |
+| 4 | `GET /api/history` | Lịch sử tất cả tiệm (mảng). `?store=` lọc |
+| 5 | `GET /api/history/{store}` | Lịch sử 1 tiệm (object) |
+| 6 | `GET /api/refresh` | **Cào thủ công** (nút làm mới) — cào xong đọc lại #2/#4 |
+
+> #1–#5 chỉ **đọc** (nhẹ, poll thoải mái). Chỉ **#6** mới cào dữ liệu mới (giống cron). Bấm "làm mới" trên app → gọi #6 → xong gọi lại #2 + #4.
+
 ---
 
 ## Kiểu dữ liệu chung
@@ -157,10 +170,27 @@ vd `GET /api/history/kimphat`. Trả **1 object** `{ store, store_name, history 
 
 ---
 
+## 6. `GET /api/refresh` — cào thủ công (làm mới)
+
+Gọi khi user bấm nút "làm mới". Cào ngay **tất cả tiệm** + lưu DB (như cron), rồi app đọc lại `/api/price`.
+
+- `GET /api/refresh` → cào tất cả tiệm. Không có tham số.
+- Không auth, không cooldown. Trả `{ count, results }` (giống `/api/cron`) — **không cần đọc body**, chỉ cần chờ xong.
+- Cào có thể mất vài giây (fetch nhiều nguồn) → hiện loading trên nút.
+
+```jsonc
+{ "count": 2, "results": [ { "store_id": "kimphat", "changed": true, "action": "insert", "data": { } } ] }
+```
+
+> **Luồng nút làm mới:** `GET /api/refresh` → (chờ xong) → `GET /api/price` + `GET /api/history`. Không cần đọc `results`; chỉ cần đọc lại 2 endpoint kia.
+
+---
+
 ## Ghi chú cho mobile
 
 - **Không auth, CORS mở** — gọi thẳng từ app.
-- **Auto refresh:** app nên poll **mỗi 30–60s** màn hình giá hiện tại (`/api/price`). Endpoint này trả cache/DB ngay và đồng thời trigger refresh nền (có cooldown phía server), nên dữ liệu thường lên sớm hơn chu kỳ cron.
+- **Auto refresh (poll):** app poll **mỗi 30–60s** màn hình giá (`/api/price`). Endpoint này giờ **CHỈ ĐỌC** (không cào) — nhẹ, không ghi DB.
+- **Làm mới thủ công (nút reload):** muốn ép cào data mới ngay → gọi **`GET /api/refresh`** (xem mục 6), cào xong thì gọi lại `/api/price` + `/api/history` để lấy data mới. Cào định kỳ nền do cron lo (~15 phút).
 - **Đa tiệm:** lấy `/api/stores` → render filter (gợi ý: "Tất cả" + từng tiệm). "Tất cả" gọi `/api/price` & `/api/history` (mảng); chọn 1 tiệm gọi bản `/{store}` (object) hoặc `?store=`.
 - **history:** mỗi item = 1 lần đổi giá; `created_at` = lúc snapshot xuất hiện, `updated_at` = lần cuối server xác nhận. Khi gộp nhiều tiệm để hiện timeline, sort theo `created_at` giảm dần và gắn nhãn `store_name`.
 - **Phát hiện log mới:** lưu `price.updated_at` (hoặc `history[history.length-1].id`) lần trước; nếu khác ở lần poll sau thì hiển thị badge/log mới.

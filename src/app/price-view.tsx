@@ -167,8 +167,8 @@ export default function PriceView({
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Gọi /api/price (đồng thời trigger cào nền có cooldown ở server) + /api/history rồi cập nhật UI.
-  // Dùng cho: mount (reload trang), auto-poll 30s, và nút "Tải lại" thủ công.
+  // Đọc /api/price + /api/history (CHỈ ĐỌC, không cào) rồi cập nhật UI.
+  // Dùng cho: mount (load trang), auto-poll 30s, và sau khi nút "Tải lại" cào xong.
   const load = useCallback(async (sel: string) => {
     setLoading(true);
     try {
@@ -194,6 +194,18 @@ export default function PriceView({
     }
   }, []);
 
+  // Nút reload thủ công: cào mới TẤT CẢ tiệm (GET /api/refresh, như cron) rồi đọc lại data.
+  // Auto-poll 30s bên dưới CHỈ đọc (không cào) -> không ghi DB mỗi nhịp poll.
+  const onReload = useCallback(async () => {
+    setLoading(true);
+    try {
+      await fetch(`/api/refresh`, { cache: "no-store" });
+    } catch {
+      // bỏ qua lỗi cào — vẫn đọc lại data hiện có bên dưới
+    }
+    await load(selected);
+  }, [load, selected]);
+
   useEffect(() => {
     load(selected);
     const id = setInterval(() => load(selected), REFRESH_MS);
@@ -212,9 +224,9 @@ export default function PriceView({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => load(selected)}
+            onClick={onReload}
             disabled={loading}
-            title="Tải lại + cào dữ liệu ngay (server có cooldown ~60s)"
+            title="Tải lại + cào dữ liệu mới ngay"
             aria-label="Tải lại dữ liệu"
             className="rounded-button bg-tonal text-secondary hover:bg-highlight hover:text-primary flex items-center gap-1 px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50"
           >

@@ -27,7 +27,7 @@
 ### Server runtime — Next.js 16 App Router
 - What: API route handlers (`src/app/api/**/route.ts`) + Server Components (SSR).
 - Why: one codebase serves both web and API; deploys straight to Vercel.
-- Pattern: every route `export const runtime = "nodejs"`, `dynamic = "force-dynamic"`. Background work uses `after()` (next/server).
+- Pattern: every route `export const runtime = "nodejs"`, `dynamic = "force-dynamic"`. Scraping runs synchronously inside `/api/cron` + `/api/refresh` (no background `after()`).
 
 ### Persistence — Neon Postgres + Drizzle ORM
 - What: 2 tables `store`, `price_history`. Prices stored as an **encoded string** (base64 canonical JSON).
@@ -35,13 +35,14 @@
 - Why: serverless-friendly; multi-store schema unchanged when adding stores.
 
 ### Cache / Lock — Upstash Redis (REST)
-- What: read cache (`getStores/getPrices/getHistories`) + **global cooldown lock** for background scrape.
+- What: read cache (`getStores/getPrices/getHistories`); invalidated on every DB write.
 - Config: `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`. Missing env → cache no-op (read DB directly).
-- Why: REST fits serverless; `SET NX EX` lock prevents thundering herd when many clients poll.
+- Why: REST fits serverless; reads stay cheap, scrape (writes) only on cron/refresh.
 
-### Async / background — `after()` + Redis cooldown
-- Why: Vercel freezes the function right after the response → fire-and-forget dies mid-way.
-- Pattern: background scrape runs in `after(() => triggerBackgroundRefresh())`; cooldown lives in Redis (not RAM).
+### Scraping triggers — cron + manual (NOT on read)
+- Reads (`/api/price`, `/api/history`) NEVER scrape — keeps DB writes low (poll every 30–60s = read-only).
+- Scrape happens only at: (1) `/api/cron` (periodic, secret), (2) `/api/refresh` (manual: web reload / mobile).
+- Both call the SAME `scrapeAllStores()` synchronously (await) — no `after()`, no cooldown.
 
 ---
 
@@ -59,8 +60,9 @@ Store website ──fetchData()──> GoldData ──encodeData()──> price_
 
 ### Refresh Flow (NO socket/realtime)
 ```text
-Flow 1 (background): external cron 15m ─> GET /api/cron ─> scrapeAllStores()  [synchronous, no cooldown]
-Flow 2 (poll):       app poll GET /api/price ─> after() ─> triggerBackgroundRefresh() ─> scrapeAllStores()  [Redis cooldown]
+Flow 1 (cron):   external cron 15m ─> GET /api/cron (secret)  ─> scrapeAllStores()  [sync]
+Flow 2 (manual): web reload / mobile ─> GET /api/refresh       ─> scrapeAllStores()  [sync, no cooldown]
+Reads:           app poll GET /api/price + /api/history        ─> cache/DB only, NO scrape
 ```
 
 ### Write decision (matching)
@@ -77,7 +79,8 @@ after DB write -> cacheDel(price:<store>, price:all, history:<store>, history:al
 
 ### API routes (`src/app/api/**/route.ts`)
 - `stores/route.ts` — GET store list.
-- `price/route.ts` — GET all stores' prices (✅ background-scrapes all). `?store=` only filters the response.
+- `price/route.ts` — GET all stores' prices (READ-ONLY, no scrape). `?store=` only filters the response.
+- `refresh/route.ts` — GET manual scrape-all (`scrapeAllStores()`, no auth/cooldown) for reload button / mobile.
 - `price/[store]/route.ts` — GET one store (read-only).
 - `history/route.ts`, `history/[store]/route.ts` — GET history (read-only).
 - `cron/route.ts` — GET scrape-all (synchronous, needs `CRON_SECRET`). `?store=` scrapes one store manually.
@@ -103,16 +106,16 @@ Reads: always via queries.ts (cache-first). Writes: always via scrapeAndStore (t
 ### Most complex module
 - Module: **scrape service** (`src/lib/scrape.ts` + `src/lib/stores.ts`).
 - Why complex: parses different sources (static HTML via cheerio vs JSON API), insert/update matching, cache invalidation; it's the single scrape source for both cron and poll.
-- Reference files: `src/lib/scrape.ts`, `src/lib/stores.ts`, `src/lib/encode.ts`, `src/lib/refresh.ts`.
+- Reference files: `src/lib/scrape.ts`, `src/lib/stores.ts`, `src/lib/encode.ts`, `src/app/api/refresh/route.ts`.
 
 ---
 
 ## 6. Data Flow — Real Cases
 
-### Flow 1: App opens the prices screen (poll)
-1. App `GET /api/price` → route returns cache/DB data immediately (`getPrices`).
-2. `after(() => triggerBackgroundRefresh())` runs AFTER the response: if Redis cooldown allows → `scrapeAllStores()` scrapes all stores.
-3. Each store differing → INSERT, same → UPDATE; then invalidate cache. The app's next poll sees fresh data.
+### Flow 1: User taps reload (web/mobile)
+1. Client `GET /api/refresh` → `scrapeAllStores()` runs synchronously (await), scrapes all stores.
+2. Each store differing → INSERT, same → UPDATE; then invalidate cache.
+3. Client then re-reads `GET /api/price` + `/api/history` (read-only) to show fresh data. (Auto-poll 30–60s only reads, never scrapes.)
 
 ### Flow 2: Periodic cron (app not open)
 1. cron-job.org `GET /api/cron` with `x-cron-secret` every 15 min.
@@ -126,8 +129,7 @@ Reads: always via queries.ts (cache-first). Writes: always via scrapeAndStore (t
 ### Architecture Rules
 - **Single scrape source** = `scrapeAllStores()`. Any scrape-all caller reuses it; never write a new scrape loop.
 - Reads **always via `queries.ts`** (cache-first); DB writes **always via `scrapeAndStore`** (invalidates cache).
-- Background work on Vercel **always uses `after()`**, never fire-and-forget.
-- Cooldown/lock **uses Redis (`cacheLock`)**, not module-level vars (per-instance RAM is useless).
+- Scraping is triggered ONLY by `/api/cron` (periodic) + `/api/refresh` (manual) — never on read/poll (keeps DB writes low).
 
 ### API Rules
 - Keep route handlers thin; logic in `src/lib/`. Every route: `runtime=nodejs`, `dynamic=force-dynamic`, has `OPTIONS`, returns `corsHeaders()`.
@@ -145,8 +147,8 @@ Reads: always via queries.ts (cache-first). Writes: always via scrapeAndStore (t
 
 ## 8. Common Pitfalls
 
-- Fire-and-forget background scrape (no `after()`) → frozen by Vercel, dies mid-way. **Always `after()`**.
-- Module-level cooldown → useless across instances (thundering herd). **Use `cacheLock`**.
+- Scraping on read/poll → too many DB writes. Scrape ONLY via `/api/cron` + `/api/refresh`; keep reads read-only.
+- Reintroducing scrape into `/api/price` or any read → DB writes balloon. Keep reads read-only; scrape only via cron/refresh.
 - Proposing socket/MQTT/SSE on Vercel → wrong serverless model (ruled out; for push use an external service).
 - Forgetting `cacheDel` after a DB write → API serves stale data until TTL expires.
 - Hardcoding the store list → always read from `/api/stores` / the `store` table.
@@ -163,7 +165,7 @@ Reads: always via queries.ts (cache-first). Writes: always via scrapeAndStore (t
 ### Modify with care
 - `src/lib/queries.ts` (cache keys must match `cache.ts` + invalidation in `scrape.ts`).
 - `src/lib/openapi.ts` (must match the real response).
-- Cooldown / `after()` in the price route.
+- `/api/refresh` (manual scrape-all) — don't reintroduce scraping into `/api/price`/reads.
 
 ### Never touch without full understanding
 - `src/lib/encode.ts` (changing it breaks insert/update matching across all history).
@@ -176,7 +178,7 @@ Reads: always via queries.ts (cache-first). Writes: always via scrapeAndStore (t
 
 - List rendering: SSR-ready HTML; client only polls for updates.
 - Memoization: cache-first reads (Upstash TTL 600s), invalidate on write.
-- Caching: Upstash Redis; cooldown lock prevents scrape pile-up.
+- Caching: Upstash Redis (TTL 600s), invalidated on write; scrape only on cron/refresh (not on read).
 - Real-time handling: **NO realtime** — poll 30–60s + cron 15m. Region `sin1` to sit near Neon/Upstash for lower latency.
 
 ---
@@ -190,7 +192,7 @@ Reads: always via queries.ts (cache-first). Writes: always via scrapeAndStore (t
 
 ### Read second
 1. `src/lib/queries.ts` (cache/DB reads)
-2. `src/lib/refresh.ts` + `src/lib/cache.ts` (background scrape + cooldown)
+2. `src/app/api/refresh/route.ts` + `src/app/api/cron/route.ts` (scrape triggers) + `src/lib/cache.ts`
 3. `src/app/api/price/route.ts` + `src/app/api/cron/route.ts`
 
 ### Read when needed
@@ -206,9 +208,8 @@ Reads: always via queries.ts (cache-first). Writes: always via scrapeAndStore (t
 |---|---|---|
 | `scrapeAllStores()` | `src/lib/scrape.ts` | Scrape all stores (single source) |
 | `scrapeAndStore(cfg)` | `src/lib/scrape.ts` | Scrape one store + insert/update |
-| `triggerBackgroundRefresh()` | `src/lib/refresh.ts` | Background scrape with cooldown (via `after()`) |
+| `GET /api/refresh` | `src/app/api/refresh/route.ts` | Manual scrape-all (calls `scrapeAllStores()`, no auth/cooldown) |
 | `getPrices/getHistories/getStores` | `src/lib/queries.ts` | Cache-first reads |
-| `cacheLock(key, ttl)` | `src/lib/cache.ts` | Global cooldown/lock |
 | `STORES` | `src/lib/stores.ts` | Registry + per-store parsers |
 
 ### Key type imports

@@ -11,6 +11,7 @@ export const openapiSpec = {
   tags: [
     { name: "public", description: "API công khai cho mobile/client" },
     { name: "cron", description: "Cào + lưu DB, cần CRON_SECRET" },
+    { name: "test", description: "[THỬ NGHIỆM] endpoint tạm để xem cấu trúc data, chưa gắn vào STORES/cron" },
   ],
   components: {
     securitySchemes: {
@@ -147,6 +148,39 @@ export const openapiSpec = {
           stores: { type: "array", items: { $ref: "#/components/schemas/Store" } },
         },
         required: ["count", "stores"],
+      },
+      TestSjcResponse: {
+        type: "object",
+        description: "[THỬ NGHIỆM] Giá 1 brand cào từ mirror giavang.org (khu vực đầu), đã đổi đơn vị về full VND.",
+        properties: {
+          source: { type: "string", example: "giavang.org/trong-nuoc/sjc" },
+          brand: { type: "string", example: "sjc" },
+          count: { type: "integer", example: 12 },
+          data: { $ref: "#/components/schemas/GoldData" },
+        },
+        required: ["source", "brand", "count", "data"],
+      },
+      TestSjcAllResponse: {
+        type: "object",
+        description: "[THỬ NGHIỆM] Giá TẤT CẢ brand giavang.org (khi ?brand=all).",
+        properties: {
+          source: { type: "string", example: "giavang.org" },
+          brands: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                brand: { type: "string", example: "doji" },
+                name: { type: "string", example: "DOJI" },
+                count: { type: "integer", example: 10 },
+                data: { $ref: "#/components/schemas/GoldData" },
+                error: { type: "string" },
+              },
+              required: ["brand", "name"],
+            },
+          },
+        },
+        required: ["source", "brands"],
       },
       Error: {
         type: "object",
@@ -297,6 +331,68 @@ export const openapiSpec = {
           },
           "502": {
             description: "Cào trang nguồn thất bại",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
+          },
+        },
+      },
+    },
+    "/api/refresh": {
+      get: {
+        tags: ["public"],
+        summary: "Cào thủ công (làm mới dữ liệu)",
+        description:
+          "Cào NGAY tất cả tiệm rồi lưu DB (gọi thẳng `scrapeAllStores()` như /api/cron, KHÔNG auth, KHÔNG cooldown, không phân biệt store). Dùng cho nút reload web & nút làm mới app mobile (Flutter). `/api/price` & `/api/history` chỉ ĐỌC (không cào) nên cào chỉ xảy ra ở đây hoặc cron. Cào xong gọi lại GET /api/price + /api/history để lấy data mới.",
+        responses: {
+          "200": {
+            description: "OK — đã cào tất cả tiệm",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/CronBatchResponse" } } },
+          },
+          "502": {
+            description: "Cào trang nguồn thất bại",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
+          },
+        },
+      },
+    },
+    "/api/test-sjc": {
+      get: {
+        tags: ["test"],
+        summary: "[THỬ NGHIỆM] Cào giá vàng từ mirror giavang.org (đa brand)",
+        description:
+          "Cào giá vàng từ mirror mở giavang.org (sjc.com.vn bị Cloudflare chặn). Chỉ lấy khu vực đầu tiên của mỗi brand (đủ loại nhất), đổi đơn vị về full VND. `?brand=` chọn brand (mặc định `sjc`); `?brand=all` trả tất cả brand. CHƯA gắn vào STORES/cron.",
+        parameters: [
+          {
+            name: "brand",
+            in: "query",
+            required: false,
+            description: "Brand cần cào, hoặc `all` để lấy tất cả.",
+            schema: {
+              type: "string",
+              default: "sjc",
+              enum: ["sjc", "doji", "pnj", "btmc", "btmh", "phuquy", "ngoctham", "all"],
+            },
+          },
+        ],
+        responses: {
+          "200": {
+            description: "OK — 1 brand (TestSjcResponse) hoặc tất cả (TestSjcAllResponse khi ?brand=all)",
+            content: {
+              "application/json": {
+                schema: {
+                  oneOf: [
+                    { $ref: "#/components/schemas/TestSjcResponse" },
+                    { $ref: "#/components/schemas/TestSjcAllResponse" },
+                  ],
+                },
+              },
+            },
+          },
+          "404": {
+            description: "Brand không hợp lệ",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
+          },
+          "502": {
+            description: "Cào mirror thất bại",
             content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
           },
         },

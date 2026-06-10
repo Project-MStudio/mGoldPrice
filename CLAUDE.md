@@ -56,10 +56,10 @@ Use default model, then print the `⚠️ HYDRA GAP DETECTED` block at end of re
 |---|---|
 | Server | Next.js 16 App Router (route handlers + Server Components) |
 | DB / ORM | Neon serverless Postgres + Drizzle ORM |
-| Cache / Lock | Upstash Redis (REST) — read cache + `cacheLock` cooldown |
+| Cache | Upstash Redis (REST) — read cache, invalidate on write |
 | Scraping | cheerio (static HTML) or fetch JSON API per store |
 | Styling | Tailwind v4 (CSS-first `@theme`), dark-only |
-| Background | `after()` (next/server) + Redis cooldown |
+| Scraping | sync in `/api/cron` + `/api/refresh` (never on read) |
 | Deploy | Vercel free; external cron 15m |
 
 ---
@@ -84,8 +84,7 @@ src/
     ├── scrape.ts      # SINGLE SCRAPE SOURCE: scrapeAndStore + scrapeAllStores
     ├── stores.ts      # registry STORES + per-store parsers
     ├── queries.ts     # cache→DB→decode reads
-    ├── cache.ts       # Upstash + cacheLock
-    ├── refresh.ts     # triggerBackgroundRefresh (background scrape w/ cooldown)
+    ├── cache.ts       # Upstash cache (get/set/del + keys)
     ├── encode.ts      # canonical base64 encode/decode
     ├── cors.ts · openapi.ts
     └── db/ (schema, seed, index)
@@ -94,7 +93,7 @@ src/
 Key files:
 - `src/lib/scrape.ts` — single scrape source; scrape-all callers use `scrapeAllStores()`
 - `src/lib/stores.ts` — add a store ONLY here (+ seed)
-- `src/lib/refresh.ts` — background scrape with cooldown, called via `after()` in price route
+- `src/app/api/refresh/route.ts` — manual scrape-all (GET) → `scrapeAllStores()`; reads never scrape
 
 ---
 
@@ -117,7 +116,7 @@ Priority (after Step 0): root `AGENTS.md` (app context) > `{RULES}/rules/*` (pro
 ### Server / Next.js
 - Keep route handlers THIN: parse → call `src/lib/` service → return JSON. No logic in routes
 - Every route: `runtime="nodejs"` + `dynamic="force-dynamic"` + `OPTIONS()` + `corsHeaders()`
-- Background work ALWAYS `after()`; cooldown ALWAYS `cacheLock` (Redis)
+- Scrape ONLY via `/api/cron` + `/api/refresh` (never on read/poll); reuse `scrapeAllStores()`
 
 ### Files
 - Logic in `src/lib/`, not in routes. Scan `src/lib/` for existing helpers before writing new ones
@@ -138,7 +137,7 @@ Agreed scope → implement fully; no "remaining parts..." TODOs.
 
 ### Blast Radius (touching shared layers)
 - 🔴 CRITICAL: `src/lib/scrape.ts`, `src/lib/encode.ts`, `src/lib/db/schema.ts` → list affected API/flow; migration needed if schema changes
-- 🟠 HIGH: `src/lib/queries.ts`, `src/lib/cache.ts`, `src/lib/refresh.ts`, `src/lib/stores.ts` → affects cache/scrape across routes
+- 🟠 HIGH: `src/lib/queries.ts`, `src/lib/cache.ts`, `src/lib/stores.ts` → affects cache/scrape across routes
 - 🟡 MEDIUM: one route handler, UI
 
 ### Guards
@@ -150,8 +149,8 @@ Add a store → only `stores.ts` + seed. Add scrape to API → only call the ser
 
 | # | Lesson | Rule |
 |---|---|---|
-| 1 | Fire-and-forget background scrape is frozen by Vercel after response | Background work ALWAYS via `after()` |
-| 2 | RAM-based cooldown is useless across instances (thundering herd) | Cooldown ALWAYS `cacheLock` (Redis) |
+| 1 | Scraping on every read/poll = too many DB writes | Scrape only via `/api/cron` + `/api/refresh`, never on read |
+| 2 | DB write without invalidating cache serves stale data | After write, `cacheDel` price/history keys (done in `scrapeAndStore`) |
 | 3 | Socket/SSE can't live on Vercel serverless | For <1s push use an external service, don't self-host on Vercel |
 | 4 | Duplicated scrape logic in cron + price is hard to maintain | Single scrape source `scrapeAllStores()`; add stores only in `stores.ts` |
 
@@ -176,7 +175,7 @@ Task ≥ 50 LOC / ≥ 3 files / touches scrape-service + schema + API contract:
 - [ ] `npx tsc --noEmit` clean
 - [ ] `npm test` pass
 - [ ] Thin route, logic in `src/lib/`
-- [ ] Background `after()`, cooldown `cacheLock`, scrape-all `scrapeAllStores()`, DB write has `cacheDel`
+- [ ] Scrape only via cron/refresh, scrape-all `scrapeAllStores()`, DB write has `cacheDel`
 - [ ] API change → update `MOBILE_API.md` + `openapi.ts`
 
 ---
